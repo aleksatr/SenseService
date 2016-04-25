@@ -11,19 +11,21 @@
 
 //#define MY_PORT 8001
 #define CONF_LINE_LENGTH 512
-#define INPUT_BUF_SIZE 10000
+//#define INPUT_BUF_SIZE 10000
 //#define GC_LIMIT 20                     //maksimalan broj child processa koji nisu pocisceni
 //#define UNRES_CONN_QUEUE_LEN 5000       //maksimalna duzina reda neresenih konekcija. argument za sistemski poziv listen()
 //#define LOG_NAME "service.log"
-#define CONF_FNAME "conf.dat"
+#define CONF_FNAME "service.conf"
 
-unsigned short my_udp_port = 3333;
-unsigned int gc_limit = 20;
-unsigned short db_port = 3306;
-char *db_host = 0;
-char *db_name = 0;
-char *db_user = 0;
-char *db_pass = 0;
+void loadConfig();
+
+unsigned short int my_udp_port = 3333;
+unsigned short int gc_limit = 20;
+unsigned short int db_port = 3306;
+char db_host[CONF_LINE_LENGTH/2] = {0};
+char db_name[CONF_LINE_LENGTH/2] = {0};
+char db_user[CONF_LINE_LENGTH/2] = {0};
+char db_pass[CONF_LINE_LENGTH/2] = {0};
 
 int main(int argc, char **argv)
 {
@@ -57,7 +59,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    while(1)
+    /*while(1)
     {
 
 
@@ -146,7 +148,7 @@ int main(int argc, char **argv)
 
             num_of_cp_waiting = 0;
         }
-    }
+    }*/
 
     close(sock);
     closelog();
@@ -180,37 +182,37 @@ void loadConfig()
             continue;
 
         if(!strcasecmp("UDP_PORT", key))
-            sscanf(value, "%u", &my_port);
+            sscanf(value, "%hu", &my_udp_port);
         else if(!strcasecmp("GC_LIMIT", key))
-            sscanf(value, "%u", &gc_limit);
+            sscanf(value, "%hu", &gc_limit);
         else if(!strcasecmp("DB_PORT", key))
-            sscanf(value, "%u", &db_port);
+            sscanf(value, "%hu", &db_port);
         else if(!strcasecmp("DB_HOST", key))
         {
-            db_host = (char*) malloc(strlen(value) + 1);
-            if(db_host != 0)
+            //db_host = (char*) malloc(strlen(value) + 1);
+            //if(db_host != 0)
                 strcpy(db_host, value);
         }else if(!strcasecmp("DB_NAME", key))
         {
-            db_name = (char*) malloc(strlen(value) + 1);
-            if(db_name != 0)
+            //db_name = (char*) malloc(strlen(value) + 1);
+            //if(db_name != 0)
                 strcpy(db_name, value);
         }else if(!strcasecmp("DB_USER", key))
         {
-            db_user = (char*) malloc(strlen(value) + 1);
-            if(db_user != 0)
+            //db_user = (char*) malloc(strlen(value) + 1);
+            //if(db_user != 0)
                 strcpy(db_user, value);
         }else if(!strcasecmp("DB_PASS", key))
         {
-            db_pass = (char*) malloc(strlen(value) + 1);
-            if(db_pass != 0)
+            //db_pass = (char*) malloc(strlen(value) + 1);
+            //if(db_pass != 0)
                 strcpy(db_pass, value);
         }
     }
 
     fclose(conf);
 
-    if(!db_host || !db_name || !db_user || !db_pass)
+    if(!db_host[0] || !db_name[0] || !db_user[0] || !db_pass[0])
     {
         syslog(LOG_ERR, "Configuration is not loaded properly, execution can't continue... exiting");
         closelog();
