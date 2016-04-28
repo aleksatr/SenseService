@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <syslog.h>
+#include "./libs/cJSON/cJSON.h"
+#include "sensors.h"
 
 //#define MY_PORT 8001
 #define CONF_LINE_LENGTH 512
@@ -15,9 +17,11 @@
 //#define GC_LIMIT 20                     //maksimalan broj child processa koji nisu pocisceni
 //#define UNRES_CONN_QUEUE_LEN 5000       //maksimalna duzina reda neresenih konekcija. argument za sistemski poziv listen()
 //#define LOG_NAME "service.log"
-#define CONF_FNAME "service.conf"
+#define SERVICE_CONF_FNAME "service.conf"
+#define SENSORS_CONF_FNAME "sensors.conf"
 
-void loadConfig();
+void loadServiceConfig();
+void loadSensorsConfig();
 
 unsigned short int my_udp_port = 3333;
 unsigned short int gc_limit = 20;
@@ -26,6 +30,7 @@ char db_host[CONF_LINE_LENGTH/2] = {0};
 char db_name[CONF_LINE_LENGTH/2] = {0};
 char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
+struct sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
 
 int main(int argc, char **argv)
 {
@@ -38,7 +43,8 @@ int main(int argc, char **argv)
     openlog(NULL, LOG_PID|LOG_CONS, LOG_USER);
 
     //load config from file CONF_FNAME
-    loadConfig();
+    loadServiceConfig();
+    loadSensorsConfig();
 
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(my_udp_port);
@@ -157,15 +163,15 @@ int main(int argc, char **argv)
 }
 
 //ako je prvi non-white character # onda se preskace linija - komentar
-void loadConfig()
+void loadServiceConfig()
 {
     char buff[CONF_LINE_LENGTH] = {0}, key[CONF_LINE_LENGTH/2] = {0}, value[CONF_LINE_LENGTH/2] = {0};
-    FILE *conf = fopen(CONF_FNAME, "r");
+    FILE *conf = fopen(SERVICE_CONF_FNAME, "r");
     int i;
 
     if(!conf)
     {
-        syslog(LOG_ERR, "Configuration file can't be opened... exiting");
+        syslog(LOG_ERR, "Service Configuration file can't be opened... exiting");
         closelog();
         exit(1);
     }
@@ -214,9 +220,63 @@ void loadConfig()
 
     if(!db_host[0] || !db_name[0] || !db_user[0] || !db_pass[0])
     {
-        syslog(LOG_ERR, "Configuration is not loaded properly, execution can't continue... exiting");
+        syslog(LOG_ERR, "Service Configuration is not loaded properly, execution can't continue... exiting");
         closelog();
         exit(1);
     }
+}
+
+void loadSensorsConfig()
+{
+    char buff[CONF_LINE_LENGTH] = {0};
+    FILE *conf = fopen(SENSORS_CONF_FNAME, "r");
+    int i, k = 0;
+    cJSON *root;
+
+    if(!conf)
+    {
+        syslog(LOG_ERR, "Sensors Configuration file can't be opened... exiting");
+        closelog();
+        exit(1);
+    }
+
+    while(!feof(conf))
+    {
+        fgets(buff, CONF_LINE_LENGTH, conf);
+
+        for(i = 0; (buff[i] == ' ' || buff[i] == '\t') && i < CONF_LINE_LENGTH; ++i)
+            ;
+
+        if(i == CONF_LINE_LENGTH || buff[i] == 0 || buff[i] == '\n' || buff[i] == '#')
+            continue;
+
+        root = cJSON_Parse(buff);
+
+        char *name = cJSON_GetObjectItem(root, "name")->valuestring;
+
+        if(!strcasecmp("accelerometer", name))
+            k = accelerometer;
+        else if(!strcasecmp("gyroscope", name))
+            k = gyroscope;
+        else if(!strcasecmp("magnetometer", name))
+            k = magnetometer;
+        else if(!strcasecmp("gps", name))
+            k = gps;
+        else
+            continue;
+
+        strcpy(sensor_types[k].name, name);
+        sensor_types[k].keep_alive = cJSON_GetObjectItem(root, "keep_alive")->valueint;
+        sensor_types[k].min_x = cJSON_GetObjectItem(root, "min_x")->valuedouble;
+        sensor_types[k].min_y = cJSON_GetObjectItem(root, "min_y")->valuedouble;
+        sensor_types[k].min_z = cJSON_GetObjectItem(root, "min_z")->valuedouble;
+        sensor_types[k].max_x = cJSON_GetObjectItem(root, "max_x")->valuedouble;
+        sensor_types[k].max_y = cJSON_GetObjectItem(root, "max_y")->valuedouble;
+        sensor_types[k].max_z = cJSON_GetObjectItem(root, "max_z")->valuedouble;
+
+        cJSON_Delete(root);
+    }
+
+    fclose(conf);
 }
 
