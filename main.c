@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -8,6 +9,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <syslog.h>
+#include <signal.h>
 #include "./libs/cJSON/cJSON.h"
 #include "sensors.h"
 
@@ -20,21 +22,26 @@
 #define SERVICE_CONF_FNAME "service.conf"
 #define SENSORS_CONF_FNAME "sensors.conf"
 
-void loadServiceConfig();
-void loadSensorsConfig();
+void load_service_conf();
+void load_sensors_conf();
+void exit_cleanup();
+void sig_int_handler();
 
 unsigned short int my_udp_port = 3333;
 unsigned short int gc_limit = 20;
 unsigned short int db_port = 3306;
+unsigned short int worker_threads_num = 10;
 char db_host[CONF_LINE_LENGTH/2] = {0};
 char db_name[CONF_LINE_LENGTH/2] = {0};
 char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
 struct sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
 
+int sock;
+
 int main(int argc, char **argv)
 {
-    int sock, newSock, i, num_of_cp_waiting = 0; //broj child processa ciji status nije prikupio proces roditelj
+    int i, num_of_cp_waiting = 0; //broj child processa ciji status nije prikupio proces roditelj
     pid_t childPid;
     socklen_t addrlen = sizeof(struct sockaddr_in);
     struct sockaddr_in serverAddress, clientAddress;
@@ -42,9 +49,20 @@ int main(int argc, char **argv)
     //open log
     openlog(NULL, LOG_PID|LOG_CONS, LOG_USER);
 
-    //load config from file CONF_FNAME
-    loadServiceConfig();
-    loadSensorsConfig();
+    //load config from files
+    load_service_conf();
+    load_sensors_conf();
+
+    //called by exit() for cleanup
+    if(atexit(exit_cleanup) != 0)
+        syslog(LOG_WARNING, "Can’t register exit_cleanup()...");
+
+    //register signal handlers for cleanup
+    signal(SIGTERM, sig_int_handler);   //komanda <kill pid> salje SIGTERM (<kill -9 pid> salje SIGKILL i ne moze da se handleuje)
+    signal(SIGINT, sig_int_handler);    //<Ctrl + C> salje SIGINT
+    signal(SIGQUIT, sig_int_handler);
+
+    scanf("%d", &i);
 
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(my_udp_port);
@@ -156,14 +174,22 @@ int main(int argc, char **argv)
         }
     }*/
 
-    close(sock);
-    closelog();
-
     return 0;
 }
 
+void exit_cleanup()
+{
+    syslog(LOG_INFO, "exiting...\n");
+    close(sock);
+    closelog();
+}
+void sig_int_handler()
+{
+    exit(0);
+}
+
 //ako je prvi non-white character # onda se preskace linija - komentar
-void loadServiceConfig()
+void load_service_conf()
 {
     char buff[CONF_LINE_LENGTH] = {0}, key[CONF_LINE_LENGTH/2] = {0}, value[CONF_LINE_LENGTH/2] = {0};
     FILE *conf = fopen(SERVICE_CONF_FNAME, "r");
@@ -193,6 +219,8 @@ void loadServiceConfig()
             sscanf(value, "%hu", &gc_limit);
         else if(!strcasecmp("DB_PORT", key))
             sscanf(value, "%hu", &db_port);
+        else if(!strcasecmp("WORKER_THREADS_NUM", key))
+            sscanf(value, "%hu", &worker_threads_num);
         else if(!strcasecmp("DB_HOST", key))
         {
             //db_host = (char*) malloc(strlen(value) + 1);
@@ -226,7 +254,7 @@ void loadServiceConfig()
     }
 }
 
-void loadSensorsConfig()
+void load_sensors_conf()
 {
     char buff[CONF_LINE_LENGTH] = {0};
     FILE *conf = fopen(SENSORS_CONF_FNAME, "r");
