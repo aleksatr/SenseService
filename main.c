@@ -37,7 +37,7 @@ char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
 struct sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
 
-int sock;
+int sock = -1;
 
 int main(int argc, char **argv)
 {
@@ -71,15 +71,15 @@ int main(int argc, char **argv)
     //kreiranje socketa
     if((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
     {
-        syslog(LOG_ERR, "Doslo je do greske prilikom kreiranja socketa... exiting ");
-        closelog();
+        syslog(LOG_ERR, "Doslo je do greske prilikom kreiranja socketa...");
+        //closelog();
         exit(1);
     }
 
     if(bind(sock, (struct sockaddr*) &serverAddress, sizeof(struct sockaddr)) < 0)
     {
-        syslog(LOG_ERR, "Doslo je do greske prilikom povezivanja socketa... exiting ");
-        closelog();
+        syslog(LOG_ERR, "Doslo je do greske prilikom povezivanja socketa...");
+        //closelog();
         exit(1);
     }
 
@@ -180,7 +180,10 @@ int main(int argc, char **argv)
 void exit_cleanup()
 {
     syslog(LOG_INFO, "exiting...\n");
-    close(sock);
+
+    if(sock >= 0)
+        close(sock);
+
     closelog();
 }
 void sig_int_handler()

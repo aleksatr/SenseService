@@ -4,7 +4,7 @@ use SenseDB;
 CREATE TABLE IF NOT EXISTS Senses
 (
 	id INTEGER AUTO_INCREMENT,
-	client_id INTEGER,
+	client_id VARCHAR(100),
 	client_address VARCHAR(100),
 	sensor_type VARCHAR(100) NOT NULL,
 	x_value DOUBLE NOT NULL,
