@@ -10,6 +10,7 @@
 #include <time.h>
 #include <syslog.h>
 #include <signal.h>
+#include <pthread.h>
 #include "./libs/cJSON/cJSON.h"
 #include "sensors.h"
 
@@ -26,6 +27,9 @@ void load_service_conf();
 void load_sensors_conf();
 void exit_cleanup();
 void sig_int_handler();
+void create_worker_threads();
+void create_job_buffers();
+void do_work(void *job_buffer_ptr);
 
 unsigned short int my_udp_port = 3333;
 unsigned short int gc_limit = 20;
@@ -36,7 +40,9 @@ char db_name[CONF_LINE_LENGTH/2] = {0};
 char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
 struct sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
-
+pthread_t *worker_threads = 0;
+sensor_job_buffer *job_buffers = 0;
+int curr_thread = 0;
 int sock = -1;
 
 int main(int argc, char **argv)
@@ -52,6 +58,8 @@ int main(int argc, char **argv)
     //load config from files
     load_service_conf();
     load_sensors_conf();
+    create_job_buffers();
+    create_worker_threads();
 
     //called by exit() for cleanup
     if(atexit(exit_cleanup) != 0)
@@ -64,9 +72,11 @@ int main(int argc, char **argv)
 
     scanf("%d", &i);
 
+    bzero((char*) &serverAddress, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(my_udp_port);
     serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+    memset(&(serverAddress.sin_zero), '\0', 8);
 
     //kreiranje socketa
     if((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
@@ -174,21 +184,102 @@ int main(int argc, char **argv)
         }
     }*/
 
-    return 0;
+    exit(0);
 }
 
 void exit_cleanup()
 {
-    syslog(LOG_INFO, "exiting...\n");
+    int i = 0, ret;
+
+    for(i = 0; i < worker_threads_num; ++i)
+    {
+        //to do: check if worker_threads[i] is initialized at all
+        ret = pthread_cancel(worker_threads[i]);
+        //to do: ok if ret==0, else error
+    }
 
     if(sock >= 0)
         close(sock);
 
+    if(worker_threads != 0)
+        free(worker_threads);
+
+    //to do: call void destroy_job_buffer(struct sensor_job_buffer* buff)
+    if(job_buffers != 0)
+        free(job_buffers);
+
+    syslog(LOG_INFO, "exiting...");
+
     closelog();
 }
+
 void sig_int_handler()
 {
     exit(0);
+}
+
+void create_job_buffers()
+{
+    //struct sensor_job_buffer *job_buffers = 0;
+    int i = 0;
+
+    job_buffers = (sensor_job_buffer*) malloc(sizeof(sensor_job_buffer) * worker_threads_num);
+
+    if(job_buffers == 0)
+    {
+        syslog(LOG_ERR, "malloc() failed to allocate memory for job buffers...");
+        exit(1);
+    }
+
+    for(i = 0; i < worker_threads_num; ++i)
+        initialize_job_buffer(&job_buffers[i]);
+}
+
+void create_worker_threads()
+{
+    int i = 0, ret;
+
+    worker_threads = (pthread_t*) malloc(sizeof(pthread_t) * worker_threads_num);
+
+    if(worker_threads == 0)
+    {
+        syslog(LOG_ERR, "malloc() failed to allocate memory for worker thread handles...");
+        exit(1);
+    }
+
+    for(i = 0; i < worker_threads_num; ++i)
+    {
+        ret = pthread_create(&worker_threads[i], 0, (void*) do_work, (void*) &job_buffers[i]);
+        //to do: ok if ret==0, else error
+    }
+
+}
+
+void do_work(void *job_buffer_ptr)
+{
+    sensor_job_buffer *my_jobs = (sensor_job_buffer *) job_buffer_ptr;
+
+    syslog(LOG_INFO, "worker thread is born!");
+
+    //consumer
+    while(1)
+    {
+        sem_wait(&my_jobs->occupied);
+        sem_wait(&my_jobs->access);
+
+        //do your shit
+        sensor_job *job = &my_jobs->jobs[my_jobs->next_out];
+
+        //citaj job->actual_job
+        //enqueue if subscribe and return id
+        //else insert into db
+
+        my_jobs->next_out = (my_jobs->next_out + 1) % JOB_BUFFER_SIZE;
+        //
+
+        sem_post(&my_jobs->access);
+        sem_post(&my_jobs->free);
+    }
 }
 
 //ako je prvi non-white character # onda se preskace linija - komentar
