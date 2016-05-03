@@ -101,7 +101,8 @@ int main(int argc, char **argv)
         rnb = recvfrom(sock, communication_buffer, COMMUNICATION_BUFFER_SIZE, 0, (struct sockaddr*) &clientAddress, &addrlen);
 
         //producer
-        current_job_buffer = &job_buffers[curr_thread++];
+        current_job_buffer = &job_buffers[curr_thread];
+        curr_thread = (curr_thread + 1) % worker_threads_num;
 
         sem_wait(&current_job_buffer->free);
         sem_wait(&current_job_buffer->access);
