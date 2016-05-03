@@ -39,18 +39,21 @@ char db_host[CONF_LINE_LENGTH/2] = {0};
 char db_name[CONF_LINE_LENGTH/2] = {0};
 char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
+char communication_buffer[COMMUNICATION_BUFFER_SIZE] = {0};
 struct sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
-pthread_t *worker_threads = 0;
-sensor_job_buffer *job_buffers = 0;
+pthread_t *worker_threads = 0;          //workers
+sensor_job_buffer *job_buffers = 0;     //job buffers
 int curr_thread = 0;
 int sock = -1;
 
 int main(int argc, char **argv)
 {
-    int i, num_of_cp_waiting = 0; //broj child processa ciji status nije prikupio proces roditelj
+    int i, rnb; //size of received message in bytes
     pid_t childPid;
     socklen_t addrlen = sizeof(struct sockaddr_in);
     struct sockaddr_in serverAddress, clientAddress;
+    sensor_job_buffer *current_job_buffer;
+    sensor_job *job;
 
     //open log
     openlog(NULL, LOG_PID|LOG_CONS, LOG_USER);
@@ -93,96 +96,27 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /*while(1)
+    while(1)
     {
+        rnb = recvfrom(sock, communication_buffer, COMMUNICATION_BUFFER_SIZE, 0, (struct sockaddr*) &clientAddress, &addrlen);
 
+        //producer
+        current_job_buffer = &job_buffers[curr_thread++];
 
-        if((childPid = fork()) < 0)
-        {
-            syslog(LOG_INFO, "Greska pri kreiranju procesa za komunikaciju sa klijentom");
-        }
-        else
-        {
-            ++num_of_cp_waiting;
-            if(!childPid)
-            {
-                //proces dete
-                int brojPoslatihBajtova, brojPrimljenihBajtova, statusNo, outputLen;
-                char inputBuf[INPUT_BUF_SIZE] = {0}, *outputBuf = 0;
-                unsigned char *picBuff;
-                int check = -1;
+        sem_wait(&current_job_buffer->free);
+        sem_wait(&current_job_buffer->access);
 
-                close(sock); //nije nam vise potreban u ovom procesu
-                //komunikacija sa klijentom....slanje i primanje poruka
+        job = &current_job_buffer->jobs[current_job_buffer->next_in];
 
-                brojPrimljenihBajtova = recv(newSock, (void*) inputBuf, INPUT_BUF_SIZE, 0);
-                printf("Server je primio zahtev duzine %d B sa adrese [%s] \n", brojPrimljenihBajtova, inet_ntoa(clientAddress.sin_addr));
-                statusNo = obradiZahtev(inputBuf, &outputBuf, &outputLen);
-                if(statusNo > 0)
-                {
-                    statusNo = obradiGresku(statusNo, &outputBuf, &outputLen);
-                }
-                else if(statusNo < 0)
-                {
-                    brojPoslatihBajtova = send(newSock, outputBuf, outputLen, 0);
-                    if(brojPoslatihBajtova < 0)
-                        printf("Doslo je do greske prilikom slanja podataka :S\n");
+        strcpy(job->actual_job, communication_buffer);
+        memcpy(&job->client_info, &clientAddress, addrlen);
 
+        current_job_buffer->next_in = (current_job_buffer->next_in + 1) % JOB_BUFFER_SIZE;
 
-                    picBuff = malloc(PIC_BUFF_SIZE * sizeof(char));
-                    if(!picBuff)
-                    {
-                        printf("malloc() failed! picBuff\n");
-                    }
-                    else
-                    {
-                        //primi poruku i dekodiraj je
-                        recv(newSock, (void*) picBuff, (size_t)PIC_BUFF_SIZE, 0);
-                        //printf("chech = %d\n", check);
-                        while((check = obradiWebSockFrame(picBuff)) > 0)
-                        {
-                            if(check > 1)
-                                send(newSock, picBuff, check, 0);
-                            //printf("chech = %d\n", check);
-                            recv(newSock, (void*) picBuff, (size_t)PIC_BUFF_SIZE, 0);
-                            //printf("primio\n");
-                        }
-                        //printf("chech = %d\n", check);
-                        //recv(newSock, (void*) picBuff, (size_t)PIC_BUFF_SIZE, 0);
-                        //obradiWebSockFrame(picBuff);
-                        //printf("\nPrimio sam: %s\n", picBuff);
+        sem_post(&current_job_buffer->access);
+        sem_post(&current_job_buffer->occupied);
 
-                        free(picBuff);
-                    }
-
-                }
-
-                if(!statusNo)
-                {
-                    brojPoslatihBajtova = send(newSock, outputBuf, outputLen, 0);
-                    if(brojPoslatihBajtova < 0)
-                        printf("Doslo je do greske prilikom slanja podataka :S\n");
-                }
-
-                if(outputBuf)
-                        free(outputBuf);
-
-                exit(0);
-            }
-        }
-
-        //close(newSock);
-
-        if(num_of_cp_waiting == gc_limit)
-        {
-            for(i = 0; i < gc_limit; ++i)
-                wait(0);
-
-            syslog(LOG_INFO, "Ocistio sam 20 zombija");
-
-            num_of_cp_waiting = 0;
-        }
-    }*/
+    }
 
     exit(0);
 }
