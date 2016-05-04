@@ -41,6 +41,7 @@ char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
 char communication_buffer[COMMUNICATION_BUFFER_SIZE] = {0};
 struct sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
+struct queue_si *q;
 pthread_t *worker_threads = 0;          //workers
 sensor_job_buffer *job_buffers = 0;     //job buffers
 int curr_thread = 0;
@@ -337,5 +338,49 @@ void load_sensors_conf()
     }
 
     fclose(conf);
+}
+
+unsigned int getMilisecondsFromTS()
+{
+    struct timeval val;
+    gettimeofday(&val, 0);
+
+    return val.tv_sec * 1000 + val.tv_usec;
+}
+
+void checkingForPing()
+{
+    unsigned int timeStamp, sleepTime, sleepTimeFromConfig = 999999;
+    int position = 0;
+    struct sensor_instance *si;
+    for(position = 0; position < NUMBER_OF_SENSOR_TYPES; position++)
+    {
+        if(sleepTimeFromConfig > sensor_types[position].keep_alive)
+            sleepTimeFromConfig = sensor_types[position].keep_alive;
+    }
+    timeStamp = getMilisecondsFromTS();
+    while(1)
+    {
+        si = queue_getWithPosition(q, position);
+        if (!si)
+        {
+            position = 0;
+            sleepTime = queue_calculateSleepTime(q, sleepTimeFromConfig, timeStamp);
+            if(sleepTime <= 0)
+                continue;
+            else if(sleepTime < 1000)
+                sleepTime = 1000;
+
+            sleep(sleepTime / 1000);
+            timeStamp = getMilisecondsFromTS();
+        } else
+        {
+            position++;
+            if(timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000))
+            {
+                //TODO: napravi thread koji ce pinguje
+            }
+        }
+    }
 }
 

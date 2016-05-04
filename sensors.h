@@ -2,6 +2,7 @@
 #define SENSORS_H_INCLUDED
 
 #include <semaphore.h>
+#include <pthread.h>
 
 #define COMMUNICATION_BUFFER_SIZE 1024
 #define JOB_BUFFER_SIZE 100
@@ -24,8 +25,8 @@ struct sensor_instance
     struct sensor_type *type;
     struct sockaddr_in *client_info;//ip adresa klijenta, tako nesto?!? struct sockaddr_in *client_info?
     long int last_updated_ts; //unix timestamp in miliseconds gettimeofday() system call
-    //mutex
-    //struct sensor_instance *next;
+    pthread_mutex_t mutex;
+    struct sensor_instance *next;
 };
 
 typedef struct
