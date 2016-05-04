@@ -133,13 +133,15 @@ void exit_cleanup()
         //to do: ok if ret==0, else error
     }
 
+    for(i = 0; i < worker_threads_num; ++i)
+        destroy_job_buffer(&job_buffers[i]);
+
     if(sock >= 0)
         close(sock);
 
     if(worker_threads != 0)
         free(worker_threads);
 
-    //to do: call void destroy_job_buffer(struct sensor_job_buffer* buff)
     if(job_buffers != 0)
         free(job_buffers);
 
@@ -207,7 +209,7 @@ void do_work(void *job_buffer_ptr)
 
         //citaj job->actual_job
         //enqueue if subscribe and return id
-        //else insert into db
+        //else insert into db and refresh timestamp
 
         my_jobs->next_out = (my_jobs->next_out + 1) % JOB_BUFFER_SIZE;
         //

@@ -63,9 +63,10 @@ void destroy_job_buffer(sensor_job_buffer* buff)
 {
     int ret;
 
-    sem_destroy(&buff->access);
-    sem_destroy(&buff->free);
-    sem_destroy(&buff->occupied);
+    ret = sem_destroy(&buff->access);
+    ret = sem_destroy(&buff->free);
+    ret = sem_destroy(&buff->occupied);
+    //to do: check ret value
 }
 
 enum sensor_enum
