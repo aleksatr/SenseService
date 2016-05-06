@@ -2,9 +2,13 @@
 #define SENSORS_H_INCLUDED
 
 #include <semaphore.h>
+<<<<<<< HEAD
 #include <netinet/in.h> //sadrzi definiciju struct sockaddr_in
-#include <pthread.h>
 #define CONF_LINE_LENGTH 512
+=======
+#include <pthread.h>
+
+>>>>>>> 45add56dbd36a9f433a7166b50cc0c84a76f2ddd
 #define COMMUNICATION_BUFFER_SIZE 1024
 #define JOB_BUFFER_SIZE 100
 
