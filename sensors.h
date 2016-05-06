@@ -28,6 +28,7 @@ typedef struct
     long int last_updated_ts; //unix timestamp in miliseconds gettimeofday() system call
     pthread_mutex_t mutex;
     struct sensor_instance *next;
+    char pinged;
 } sensor_instance;
 
 typedef struct

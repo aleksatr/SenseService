@@ -26,11 +26,13 @@ void queue_initialize(queue_si *q)
 
 void queue_destroy(queue_si *q)
 {
-    //TODO: odradi ovo, oslobodi memoriju
+    int id;
     sensor_instance *si = q->head;
     while(si)
     {
-        si = queue_removeWithId(q, si->id);
+        id = si->next->id;
+        free(si);
+        si = queue_removeWithId(q, id);
     }
     pthread_mutex_destroy(&q->mutex);
 }

@@ -38,6 +38,7 @@ unsigned short int my_udp_port = 3333;
 unsigned short int gc_limit = 20;
 unsigned short int db_port = 3306;
 unsigned short int worker_threads_num = 10;
+unsigned short int timeout_factor = 2;
 char db_host[CONF_LINE_LENGTH/2] = {0};
 char db_name[CONF_LINE_LENGTH/2] = {0};
 char db_user[CONF_LINE_LENGTH/2] = {0};
@@ -45,10 +46,12 @@ char db_pass[CONF_LINE_LENGTH/2] = {0};
 char communication_buffer[COMMUNICATION_BUFFER_SIZE] = {0};
 sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
 queue_si *q;
+pthread_t queue_thread;
 pthread_t *worker_threads = 0;          //workers
 sensor_job_buffer *job_buffers = 0;     //job buffers
 int curr_thread = 0;
 int sock = -1;
+
 
 int main(int argc, char **argv)
 {
@@ -193,6 +196,13 @@ void create_worker_threads()
         //to do: ok if ret==0, else error
     }
 
+    ret = pthread_create(&queue_thread, 0, (void*) checkingForKeepAliveTimeInterval(), 0);
+    if(ret != 0)
+    {
+        syslog(LOG_ERR, "could not create thread");
+        exit(1);
+    }
+
 }
 
 void do_work(void *job_buffer_ptr)
@@ -255,6 +265,8 @@ void load_service_conf()
             sscanf(value, "%hu", &db_port);
         else if(!strcasecmp("WORKER_THREADS_NUM", key))
             sscanf(value, "%hu", &worker_threads_num);
+        else if(!strcasecmp("TIMEOUT_FACTOR", key))
+            sscanf(value, "%hu", &timeout_factor);
         else if(!strcasecmp("DB_HOST", key))
         {
             //db_host = (char*) malloc(strlen(value) + 1);
@@ -373,7 +385,7 @@ unsigned int getMilisecondsFromTS()
     return val.tv_sec * 1000 + val.tv_usec;
 }
 
-void checkingForPing()
+void checkingForKeepAliveTimeInterval()
 {
     unsigned int timeStamp, sleepTime, sleepTimeFromConfig = 999999;
     int position = 0;
@@ -401,11 +413,18 @@ void checkingForPing()
         } else
         {
             position++;
-            if(timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000))
+            if(timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000 * timeout_factor))
             {
-                //TODO: napravi thread koji ce pinguje
+                queue_removeWithId(q, si->id);
+                free(si);
+            } else if ((si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
+            {
+                //TODO: piguj ga
+            }
             }
         }
     }
 }
+
+void pingClient()
 
