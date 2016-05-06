@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <netinet/in.h> //sadrzi definiciju struct sockaddr_in
+//#include <netinet/in.h> //sadrzi definiciju struct sockaddr_in
 #include <arpa/inet.h>  //sadrzi inet_ntoa()
 #include <sys/stat.h>
 #include <time.h>
@@ -12,10 +12,10 @@
 #include <signal.h>
 #include <pthread.h>
 #include "./libs/cJSON/cJSON.h"
-#include "sensors.h"
+//#include "sensors.h"
+#include "data_layer.h"
 
 //#define MY_PORT 8001
-#define CONF_LINE_LENGTH 512
 //#define INPUT_BUF_SIZE 10000
 //#define GC_LIMIT 20                     //maksimalan broj child processa koji nisu pocisceni
 //#define UNRES_CONN_QUEUE_LEN 5000       //maksimalna duzina reda neresenih konekcija. argument za sistemski poziv listen()
@@ -49,7 +49,6 @@ int sock = -1;
 int main(int argc, char **argv)
 {
     int i, rnb; //size of received message in bytes
-    pid_t childPid;
     socklen_t addrlen = sizeof(struct sockaddr_in);
     struct sockaddr_in serverAddress, clientAddress;
     sensor_job_buffer *current_job_buffer;
