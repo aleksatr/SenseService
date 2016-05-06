@@ -8,7 +8,7 @@
 #define COMMUNICATION_BUFFER_SIZE 1024
 #define JOB_BUFFER_SIZE 100
 
-struct sensor_type
+typedef struct
 {
    char  name[256];
    unsigned int  keep_alive;
@@ -18,17 +18,17 @@ struct sensor_type
    double  max_x;
    double  max_y;
    double  max_z;   // 0 for gps sensor (unused)
-};
+} sensor_type;
 
-struct sensor_instance
+typedef struct
 {
     long int id;
-    struct sensor_type *type;
+    sensor_type *type;
     struct sockaddr_in *client_info;//ip adresa klijenta, tako nesto?!? struct sockaddr_in *client_info?
     long int last_updated_ts; //unix timestamp in miliseconds gettimeofday() system call
     pthread_mutex_t mutex;
     struct sensor_instance *next;
-};
+} sensor_instance;
 
 typedef struct
 {
@@ -45,31 +45,6 @@ typedef struct
     sem_t free;
     sem_t occupied;
 } sensor_job_buffer;
-
-
-
-void initialize_job_buffer(sensor_job_buffer* buff)
-{
-    int ret;
-
-    buff->next_in = 0;
-    buff->next_out = 0;
-
-    ret = sem_init(&buff->access, 0, 1);
-    ret = sem_init(&buff->free, 0, JOB_BUFFER_SIZE);
-    ret = sem_init(&buff->occupied, 0, 0);
-    //to do: check ret value
-}
-
-void destroy_job_buffer(sensor_job_buffer* buff)
-{
-    int ret;
-
-    ret = sem_destroy(&buff->access);
-    ret = sem_destroy(&buff->free);
-    ret = sem_destroy(&buff->occupied);
-    //to do: check ret value
-}
 
 enum sensor_enum
 {

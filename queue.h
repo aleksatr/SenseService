@@ -3,29 +3,31 @@
 #include "sensors.h"
 #include <pthread.h>
 
-struct queue_si
+typedef struct
 {
     int numberOfElements;
-    struct sensor_instance *head, *tail;
+    sensor_instance *head, *tail;
     pthread_mutex_t mutex;
-};
+} queue_si;
 
-char queue_isEmpty(struct queue_si *q)
+sensor_instance* queue_removeWithId(queue_si *q, long int id);
+
+char queue_isEmpty(queue_si *q)
 {
     return q->numberOfElements == 0;
 }
 
-void queue_initialize(struct queue_si *q)
+void queue_initialize(queue_si *q)
 {
     q->numberOfElements = 0;
     q->head = q->tail = 0;
     pthread_mutex_init(&q->mutex, 0);
 }
 
-void queue_destroy(struct queue_si *q)
+void queue_destroy(queue_si *q)
 {
     //TODO: odradi ovo, oslobodi memoriju
-    struct sensor_instance *si = q->head;
+    sensor_instance *si = q->head;
     while(si)
     {
         si = queue_removeWithId(q, si->id);
@@ -33,26 +35,29 @@ void queue_destroy(struct queue_si *q)
     pthread_mutex_destroy(&q->mutex);
 }
 
-void queue_enqueue(struct queue_si *q, struct sensor_instance *si)
+void queue_enqueue(queue_si *q, sensor_instance *si)
 {
     if(!si)
         return;
+
     pthread_mutex_lock(&q->mutex);
+
     if(q->numberOfElements)
     {
         q->tail->next = si;
-		q->tail = tail->next;
+		q->tail = q->tail->next;
 	} else
 	{
-        head = tail = si;
+        q->head = q->tail = si;
 	}
+
 	q->numberOfElements++;
     pthread_mutex_unlock(&q->mutex);
 }
 
-struct sensor_instance* queue_getWithPosition(struct queue_si* q, int position)
+struct sensor_instance* queue_getWithPosition(queue_si* q, int position)
 {
-    struct sensor_instance *si;
+    sensor_instance *si;
     int i;
     pthread_mutex_lock(&q->mutex);
     si = q->head;
@@ -62,18 +67,18 @@ struct sensor_instance* queue_getWithPosition(struct queue_si* q, int position)
     return si;
 }
 
-struct sensor_instance* queue_getWithId(struct queue_si *q, long int id)
+sensor_instance* queue_getWithId(queue_si *q, long int id)
 {
-    struct sensor_instance *si;
+    sensor_instance *si;
     pthread_mutex_lock(&q->mutex);
     for(si = q->head; si != 0 && si->id != id; si = si->next);
     pthread_mutex_unlock(&q->mutex);
     return si;
 }
 
-struct sensor_instance* queue_removeWithId(struct queue_si *q, long int id)
+sensor_instance* queue_removeWithId(queue_si *q, long int id)
 {
-    struct sensor_instance *si, *tmp;
+    sensor_instance *si, *tmp;
     pthread_mutex_lock(&q->mutex);
     si = q->head;
     if(si->id == id)
@@ -109,10 +114,10 @@ struct sensor_instance* queue_removeWithId(struct queue_si *q, long int id)
     return si;
 }
 
-unsigned int queue_calculateSleepTime(struct queue_si *q, unsigned int timeFromConfig, unsigned int currentTimeStamp)
+unsigned int queue_calculateSleepTime(queue_si *q, unsigned int timeFromConfig, unsigned int currentTimeStamp)
 {
     int i, passedTime;
-    struct sensor_instance *si;
+    sensor_instance *si;
     pthread_mutex_lock(&q->mutex);
     si = q->head;
     for(i = 0; i < q->numberOfElements && !si ; i++)

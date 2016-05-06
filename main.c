@@ -10,10 +10,11 @@
 #include <time.h>
 #include <syslog.h>
 #include <signal.h>
-#include <pthread.h>
+//#include <pthread.h>
 #include "./libs/cJSON/cJSON.h"
 //#include "sensors.h"
 #include "data_layer.h"
+#include "queue.h"
 
 //#define MY_PORT 8001
 //#define INPUT_BUF_SIZE 10000
@@ -30,6 +31,8 @@ void sig_int_handler();
 void create_worker_threads();
 void create_job_buffers();
 void do_work(void *job_buffer_ptr);
+void initialize_job_buffer(sensor_job_buffer* buff);
+void destroy_job_buffer(sensor_job_buffer* buff);
 
 unsigned short int my_udp_port = 3333;
 unsigned short int gc_limit = 20;
@@ -40,8 +43,8 @@ char db_name[CONF_LINE_LENGTH/2] = {0};
 char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
 char communication_buffer[COMMUNICATION_BUFFER_SIZE] = {0};
-struct sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
-struct queue_si *q;
+sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
+queue_si *q;
 pthread_t *worker_threads = 0;          //workers
 sensor_job_buffer *job_buffers = 0;     //job buffers
 int curr_thread = 0;
@@ -339,6 +342,29 @@ void load_sensors_conf()
     fclose(conf);
 }
 
+void initialize_job_buffer(sensor_job_buffer* buff)
+{
+    int ret;
+
+    buff->next_in = 0;
+    buff->next_out = 0;
+
+    ret = sem_init(&buff->access, 0, 1);
+    ret = sem_init(&buff->free, 0, JOB_BUFFER_SIZE);
+    ret = sem_init(&buff->occupied, 0, 0);
+    //to do: check ret value
+}
+
+void destroy_job_buffer(sensor_job_buffer* buff)
+{
+    int ret;
+
+    ret = sem_destroy(&buff->access);
+    ret = sem_destroy(&buff->free);
+    ret = sem_destroy(&buff->occupied);
+    //to do: check ret value
+}
+
 unsigned int getMilisecondsFromTS()
 {
     struct timeval val;
@@ -351,7 +377,7 @@ void checkingForPing()
 {
     unsigned int timeStamp, sleepTime, sleepTimeFromConfig = 999999;
     int position = 0;
-    struct sensor_instance *si;
+    sensor_instance *si;
     for(position = 0; position < NUMBER_OF_SENSOR_TYPES; position++)
     {
         if(sleepTimeFromConfig > sensor_types[position].keep_alive)
