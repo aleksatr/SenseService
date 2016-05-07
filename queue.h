@@ -8,9 +8,9 @@ typedef struct queue_si
     int numberOfElements;
     sensor_instance *head, *tail;
     pthread_mutex_t mutex;
-};
+} queue_si;
 
-sensor_instance* queue_removeWithId(struct queue_si *q, long int id);
+sensor_instance* queue_removeWithId(struct queue_si *q, sensor_instance*);
 
 char queue_isEmpty(struct queue_si *q)
 {
@@ -36,13 +36,20 @@ void sensor_instance_destroy(sensor_instance *si)
 
 void queue_destroy(struct queue_si *q)
 {
-    int id;
-    sensor_instance *si = q->head;
+    int id = -1;
+    sensor_instance *si = q->head, *s = 0;
     while(si)
     {
-        id = si->next->id;
+        s = si->next;
+
+        /*if(si->next)
+            id = si->next->id;
+        else
+            id = -1;*/
+
         sensor_instance_destroy(si);
-        si = queue_removeWithId(q, id);
+
+        si = queue_removeWithId(q, s);
     }
     pthread_mutex_destroy(&q->mutex);
 }
@@ -62,6 +69,8 @@ void queue_enqueue(struct queue_si *q, sensor_instance *si)
 	{
         q->head = q->tail = si;
 	}
+
+    si->next = 0;
 
 	q->numberOfElements++;
     pthread_mutex_unlock(&q->mutex);
@@ -92,17 +101,21 @@ sensor_instance* queue_getWithIdType(struct queue_si *q, long int id, const char
 {
     sensor_instance *si;
     pthread_mutex_lock(&q->mutex);
-    for(si = q->head; si != 0 && si->id != id && strcasecmp(type, si->type->name); si = si->next);
+    for(si = q->head; si != 0 ; si = si->next)
+        if(si->id == id && !strcasecmp(type, si->type->name))
+            break;
+
+    /*si != 0 && (si->id != id || strcasecmp(type, si->type->name))*/
     pthread_mutex_unlock(&q->mutex);
     return si;
 }
 
-sensor_instance* queue_removeWithId(struct queue_si *q, long int id)
+sensor_instance* queue_removeWithIdType(struct queue_si *q, long int id, const char* type)
 {
     sensor_instance *si, *tmp;
     pthread_mutex_lock(&q->mutex);
     si = q->head;
-    if(si->id == id)
+    if(si->id == id && !strcasecmp(type, si->type->name))
     {
         q->head = si->next;
         if(q->tail == si)
@@ -115,7 +128,46 @@ sensor_instance* queue_removeWithId(struct queue_si *q, long int id)
     tmp = si;
     for(si = si->next; si != 0; si = si->next)
     {
-        if(si->id == id)
+        if(si->id == id && !strcasecmp(type, si->type->name))
+        {
+            tmp->next = si->next;
+            if(si == q->tail)
+            {
+                q->tail = tmp;
+            }
+            //tmp->next = si->next;
+            si->next = 0;
+            q->numberOfElements--;
+
+            pthread_mutex_unlock(&q->mutex);
+            return si;
+        }
+        tmp = si;
+    }
+    pthread_mutex_unlock(&q->mutex);
+    return si;
+}
+
+sensor_instance* queue_removeWithId(struct queue_si *q, sensor_instance *s)
+{
+    sensor_instance *si, *tmp;
+    pthread_mutex_lock(&q->mutex);
+    si = q->head;
+
+    if(si == s)
+    {
+        q->head = si->next;
+        if(q->tail == si)
+            q->tail = 0;
+        si->next = 0;
+        q->numberOfElements--;
+        pthread_mutex_unlock(&q->mutex);
+        return si;
+    }
+    tmp = si;
+    for(si = si->next; si != 0; si = si->next)
+    {
+        if(si == s)
         {
             tmp->next = si->next;
             if(si == q->tail)

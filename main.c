@@ -48,7 +48,7 @@ char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
 char communication_buffer[COMMUNICATION_BUFFER_SIZE] = {0};
 sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
-struct queue_si *q;
+struct queue_si *q = 0;
 struct queue_si que;
 pthread_t queue_thread;
 pthread_t *worker_threads = 0;          //workers
@@ -115,7 +115,7 @@ int main(int argc, char **argv)
         rnb = recvfrom(sock, communication_buffer, COMMUNICATION_BUFFER_SIZE, 0, (struct sockaddr*) &clientAddress, &addrlen);
 
         //producer
-        printf("%d] Producer produced %s\n", curr_thread, communication_buffer);
+        //printf("%d] Producer produced %s\n", curr_thread, communication_buffer);
 
         current_job_buffer = &job_buffers[curr_thread];
         curr_thread = (curr_thread + 1) % worker_threads_num;
@@ -149,6 +149,8 @@ void exit_cleanup()
         //to do: ok if ret==0, else error
     }
 
+    ret = pthread_cancel(queue_thread);
+
     for(i = 0; i < worker_threads_num; ++i)
         destroy_job_buffer(&job_buffers[i]);
 
@@ -160,6 +162,9 @@ void exit_cleanup()
 
     if(job_buffers != 0)
         free(job_buffers);
+
+    if(q)
+        queue_destroy(q);
 
     syslog(LOG_INFO, "exiting...");
 
@@ -220,11 +225,12 @@ void do_work(void *job_buffer_ptr)
     cJSON *root;
     char local_buff[100] = {0};
     char send_buff[100] = {0};
-    long int id;
+    unsigned int id;
     char *type, *tok;
     double x, y, z;
     sensor_instance *instance = 0;
-    unsigned long int ts;
+    //time_t ts;
+
     int k = -1;
 
     sensor_job_buffer *my_jobs = (sensor_job_buffer *) job_buffer_ptr;
@@ -249,9 +255,10 @@ void do_work(void *job_buffer_ptr)
 
         if(!strcasecmp(local_buff, "subscribe"))
         {
-            printf("subscribe port=%u\n", job->client_info.sin_port);
+
             //subscribe
-            id = (unsigned) time(NULL);
+            id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
+            printf("subscribe port=%u, id=%u\n", job->client_info.sin_port, id);
 
             tok = strtok(job->actual_job, "\n");
             tok = strtok(0, "\n");
@@ -273,12 +280,15 @@ void do_work(void *job_buffer_ptr)
                     //to do: check if malloc failed
                     instance->last_updated_ts = getMilisecondsFromTS();
                     instance->pinged = 0;
+                    instance->next = 0;
                     pthread_mutex_init(&instance->mutex, 0);
                     instance->id = id;
                     instance->client_info = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
                     //to do: check if malloc failed
                     memcpy(instance->client_info, &job->client_info, sizeof(struct sockaddr_in));
                     instance->type = &sensor_types[k];
+
+                    printf("create ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
 
                     queue_enqueue(q, instance);
                 }
@@ -288,12 +298,12 @@ void do_work(void *job_buffer_ptr)
             }
 
             printf("id poslat na port %d\n", job->client_info.sin_port);
-            sprintf(send_buff, "%ld", id);
+            sprintf(send_buff, "%u", id);
             sendto(sock, send_buff, strlen(send_buff) + 1, 0, (struct sockaddr*)&job->client_info, sizeof(struct sockaddr_in));
         }
         else
         {
-            printf("refresh port=%u\n", job->client_info.sin_port);
+            //printf("refresh port=%u\n", job->client_info.sin_port);
             root = cJSON_Parse(job->actual_job);
 
             type = cJSON_GetObjectItem(root, "sensor")->valuestring;
@@ -309,9 +319,11 @@ void do_work(void *job_buffer_ptr)
                 pthread_mutex_lock(&instance->mutex);
 
                 instance->last_updated_ts = getMilisecondsFromTS();
+
                 instance->pinged = 0;
 
                 pthread_mutex_unlock(&instance->mutex);
+                printf("refresh ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
                 //printf("upis u bazu \n");
                 insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
             }
@@ -471,6 +483,7 @@ void destroy_job_buffer(sensor_job_buffer* buff)
     ret = sem_destroy(&buff->free);
     ret = sem_destroy(&buff->occupied);
     //to do: check ret value
+
 }
 
 unsigned long int getMilisecondsFromTS()
@@ -486,7 +499,7 @@ void checkingForKeepAliveTimeInterval()
     long int timeStamp, sleepTime, sleepTimeFromConfig = 999999;
     char ping[] = "ping";
     int i;
-    struct sensor_instance *si = 0;
+    sensor_instance *si = 0, *temp = 0;
     if(!q)
     {
         syslog(LOG_ERR, "Queue is not initialized");
@@ -513,19 +526,26 @@ void checkingForKeepAliveTimeInterval()
             timeStamp = getMilisecondsFromTS();
         } else
         {
+            //printf("before lock\n");
             pthread_mutex_lock(&si->mutex);
+            //printf("after lock\n");
             if(timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000 * timeout_factor))
             {
-                queue_removeWithId(q, si->id);
-                printf("remove %d \n", si->id);
+                queue_removeWithId(q, si);
+                temp = si->next;
+                pthread_mutex_unlock(&si->mutex);
+                printf("remove %ld \n", si->id);
                 sensor_instance_destroy(si);
+                si = temp;
             } else if ((!si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
             {
-                sendto(sock, ping, strlen(ping) + 1, 0, (struct sockaddr*)&si->client_info, sizeof(si->client_info));
+                sendto(sock, ping, strlen(ping) + 1, 0, (struct sockaddr*) si->client_info, sizeof(struct sockaddr_in));
                 printf("ping %u \n", si->client_info->sin_port);
                 si->pinged = 1;
-            }
-            pthread_mutex_unlock(&si->mutex);
+                pthread_mutex_unlock(&si->mutex);
+            } else
+                pthread_mutex_unlock(&si->mutex);
+
         }
     }
 }
