@@ -20,7 +20,7 @@ typedef struct
    double  max_z;   // 0 for gps sensor (unused)
 } sensor_type;
 
-typedef struct
+typedef struct sensor_instance
 {
     long int id;
     sensor_type *type;

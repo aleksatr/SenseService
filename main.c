@@ -7,6 +7,7 @@
 //#include <netinet/in.h> //sadrzi definiciju struct sockaddr_in
 #include <arpa/inet.h>  //sadrzi inet_ntoa()
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <time.h>
 #include <syslog.h>
 #include <signal.h>
@@ -33,6 +34,8 @@ void create_job_buffers();
 void do_work(void *job_buffer_ptr);
 void initialize_job_buffer(sensor_job_buffer* buff);
 void destroy_job_buffer(sensor_job_buffer* buff);
+void checkingForKeepAliveTimeInterval();
+unsigned long int getMilisecondsFromTS();
 
 unsigned short int my_udp_port = 3333;
 unsigned short int gc_limit = 20;
@@ -45,7 +48,8 @@ char db_user[CONF_LINE_LENGTH/2] = {0};
 char db_pass[CONF_LINE_LENGTH/2] = {0};
 char communication_buffer[COMMUNICATION_BUFFER_SIZE] = {0};
 sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
-queue_si *q;
+struct queue_si *q;
+struct queue_si que;
 pthread_t queue_thread;
 pthread_t *worker_threads = 0;          //workers
 sensor_job_buffer *job_buffers = 0;     //job buffers
@@ -64,6 +68,10 @@ int main(int argc, char **argv)
     //open log
     openlog(NULL, LOG_PID|LOG_CONS, LOG_USER);
 
+    //create queue
+    q = &que;
+    queue_initialize(q);
+
     //load config from files
     load_service_conf();
     load_sensors_conf();
@@ -79,7 +87,7 @@ int main(int argc, char **argv)
     signal(SIGINT, sig_int_handler);    //<Ctrl + C> salje SIGINT
     signal(SIGQUIT, sig_int_handler);
 
-    scanf("%d", &i);
+    //scanf("%d", &i);
 
     bzero((char*) &serverAddress, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
@@ -88,7 +96,7 @@ int main(int argc, char **argv)
     memset(&(serverAddress.sin_zero), '\0', 8);
 
     //kreiranje socketa
-    if((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
+    if((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
     {
         syslog(LOG_ERR, "Doslo je do greske prilikom kreiranja socketa...");
         //closelog();
@@ -107,6 +115,8 @@ int main(int argc, char **argv)
         rnb = recvfrom(sock, communication_buffer, COMMUNICATION_BUFFER_SIZE, 0, (struct sockaddr*) &clientAddress, &addrlen);
 
         //producer
+        printf("%d] Producer produced %s\n", curr_thread, communication_buffer);
+
         current_job_buffer = &job_buffers[curr_thread];
         curr_thread = (curr_thread + 1) % worker_threads_num;
 
@@ -196,7 +206,7 @@ void create_worker_threads()
         //to do: ok if ret==0, else error
     }
 
-    ret = pthread_create(&queue_thread, 0, (void*) checkingForKeepAliveTimeInterval(), 0);
+    ret = pthread_create(&queue_thread, 0, (void*) checkingForKeepAliveTimeInterval, 0);
     if(ret != 0)
     {
         syslog(LOG_ERR, "could not create thread");
@@ -207,6 +217,16 @@ void create_worker_threads()
 
 void do_work(void *job_buffer_ptr)
 {
+    cJSON *root;
+    char local_buff[100] = {0};
+    char send_buff[100] = {0};
+    long int id;
+    char *type, *tok;
+    double x, y, z;
+    sensor_instance *instance = 0;
+    unsigned long int ts;
+    int k = -1;
+
     sensor_job_buffer *my_jobs = (sensor_job_buffer *) job_buffer_ptr;
 
     syslog(LOG_INFO, "worker thread is born!");
@@ -219,10 +239,86 @@ void do_work(void *job_buffer_ptr)
 
         //do your shit
         sensor_job *job = &my_jobs->jobs[my_jobs->next_out];
-
+        printf("Consumer:  ");
         //citaj job->actual_job
         //enqueue if subscribe and return id
         //else insert into db and refresh timestamp
+
+        //
+        sscanf(job->actual_job, "%s", local_buff);
+
+        if(!strcasecmp(local_buff, "subscribe"))
+        {
+            printf("subscribe port=%u\n", job->client_info.sin_port);
+            //subscribe
+            id = (unsigned) time(NULL);
+
+            tok = strtok(job->actual_job, "\n");
+            tok = strtok(0, "\n");
+
+            while(tok != 0)
+            {
+                if(!strcasecmp("accelerometer", tok))
+                    k = accelerometer;
+                else if(!strcasecmp("gyroscope", tok))
+                    k = gyroscope;
+                else if(!strcasecmp("magnetometer", tok))
+                    k = magnetometer;
+                else if(!strcasecmp("gps", tok))
+                    k = gps;
+
+                if(k >= 0)
+                {
+                    instance = (sensor_instance*) malloc(sizeof(sensor_instance));
+                    //to do: check if malloc failed
+                    instance->last_updated_ts = getMilisecondsFromTS();
+                    instance->pinged = 0;
+                    pthread_mutex_init(&instance->mutex, 0);
+                    instance->id = id;
+                    instance->client_info = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
+                    //to do: check if malloc failed
+                    memcpy(instance->client_info, &job->client_info, sizeof(struct sockaddr_in));
+                    instance->type = &sensor_types[k];
+
+                    queue_enqueue(q, instance);
+                }
+
+                k = -1;
+                tok = strtok(0, "\n");
+            }
+
+            printf("id poslat na port %d\n", job->client_info.sin_port);
+            sprintf(send_buff, "%ld", id);
+            sendto(sock, send_buff, strlen(send_buff) + 1, 0, (struct sockaddr*)&job->client_info, sizeof(struct sockaddr_in));
+        }
+        else
+        {
+            printf("refresh port=%u\n", job->client_info.sin_port);
+            root = cJSON_Parse(job->actual_job);
+
+            type = cJSON_GetObjectItem(root, "sensor")->valuestring;
+            id = cJSON_GetObjectItem(root, "id")->valueint;
+            x = cJSON_GetObjectItem(root, "x")->valuedouble;
+            y = cJSON_GetObjectItem(root, "y")->valuedouble;
+            z = cJSON_GetObjectItem(root, "z")->valuedouble;
+
+            instance = queue_getWithIdType(q, id, type);
+
+            if(instance)
+            {
+                pthread_mutex_lock(&instance->mutex);
+
+                instance->last_updated_ts = getMilisecondsFromTS();
+                instance->pinged = 0;
+
+                pthread_mutex_unlock(&instance->mutex);
+                //printf("upis u bazu \n");
+                insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
+            }
+
+            cJSON_Delete(root);
+        }
+        //
 
         my_jobs->next_out = (my_jobs->next_out + 1) % JOB_BUFFER_SIZE;
         //
@@ -377,31 +473,36 @@ void destroy_job_buffer(sensor_job_buffer* buff)
     //to do: check ret value
 }
 
-unsigned int getMilisecondsFromTS()
+unsigned long int getMilisecondsFromTS()
 {
     struct timeval val;
     gettimeofday(&val, 0);
 
-    return val.tv_sec * 1000 + val.tv_usec;
+    return val.tv_sec * 1000 + val.tv_usec/1000;
 }
 
 void checkingForKeepAliveTimeInterval()
 {
-    unsigned int timeStamp, sleepTime, sleepTimeFromConfig = 999999;
-    int position = 0;
-    sensor_instance *si;
-    for(position = 0; position < NUMBER_OF_SENSOR_TYPES; position++)
+    long int timeStamp, sleepTime, sleepTimeFromConfig = 999999;
+    char ping[] = "ping";
+    int i;
+    struct sensor_instance *si = 0;
+    if(!q)
     {
-        if(sleepTimeFromConfig > sensor_types[position].keep_alive)
-            sleepTimeFromConfig = sensor_types[position].keep_alive;
+        syslog(LOG_ERR, "Queue is not initialized");
+        exit(1);
+    }
+    for(i = 0; i < NUMBER_OF_SENSOR_TYPES; i++)
+    {
+        if(sleepTimeFromConfig > sensor_types[i].keep_alive*1000)
+            sleepTimeFromConfig = sensor_types[i].keep_alive*1000;
     }
     timeStamp = getMilisecondsFromTS();
     while(1)
     {
-        si = queue_getWithPosition(q, position);
+        si = queue_getWithPosition(q, si);
         if (!si)
         {
-            position = 0;
             sleepTime = queue_calculateSleepTime(q, sleepTimeFromConfig, timeStamp);
             if(sleepTime <= 0)
                 continue;
@@ -412,19 +513,21 @@ void checkingForKeepAliveTimeInterval()
             timeStamp = getMilisecondsFromTS();
         } else
         {
-            position++;
+            pthread_mutex_lock(&si->mutex);
             if(timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000 * timeout_factor))
             {
                 queue_removeWithId(q, si->id);
-                free(si);
-            } else if ((si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
+                printf("remove %d \n", si->id);
+                sensor_instance_destroy(si);
+            } else if ((!si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
             {
-                //TODO: piguj ga
+                sendto(sock, ping, strlen(ping) + 1, 0, (struct sockaddr*)&si->client_info, sizeof(si->client_info));
+                printf("ping %u \n", si->client_info->sin_port);
+                si->pinged = 1;
             }
-            }
+            pthread_mutex_unlock(&si->mutex);
         }
     }
 }
 
-void pingClient()
 

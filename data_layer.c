@@ -28,7 +28,7 @@ void insert_sensor_reading(long int id, char *client_address, char *sensor_type,
         return;
     }
 
-    sprintf(query_string, "INSERT INTO MESTO(client_id, client_address, sensor_type, x_value, y_value, z_value, ts) VALUES (%ld, '%s', '%s', %f, %f, %f, NULL)",
+    sprintf(query_string, "INSERT INTO Senses(client_id, client_address, sensor_type, x_value, y_value, z_value, ts) VALUES (%ld, '%s', '%s', %f, %f, %f, NULL)",
                 id, client_address, sensor_type, x, y, z);
 
     if (mysql_query(con, query_string))
