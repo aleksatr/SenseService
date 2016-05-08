@@ -497,7 +497,7 @@ unsigned long int getMilisecondsFromTS()
 void checkingForKeepAliveTimeInterval()
 {
     long int timeStamp, sleepTime, sleepTimeFromConfig = 999999;
-    char ping[] = "ping";
+    char ping[50];
     int i;
     sensor_instance *si = 0, *temp = 0;
     if(!q)
@@ -526,9 +526,7 @@ void checkingForKeepAliveTimeInterval()
             timeStamp = getMilisecondsFromTS();
         } else
         {
-            //printf("before lock\n");
             pthread_mutex_lock(&si->mutex);
-            //printf("after lock\n");
             if(timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000 * timeout_factor))
             {
                 queue_removeWithId(q, si);
@@ -539,6 +537,7 @@ void checkingForKeepAliveTimeInterval()
                 si = temp;
             } else if ((!si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
             {
+                sprintf(ping,"ping\n%s", si->type->name);
                 sendto(sock, ping, strlen(ping) + 1, 0, (struct sockaddr*) si->client_info, sizeof(struct sockaddr_in));
                 printf("ping %u \n", si->client_info->sin_port);
                 si->pinged = 1;
