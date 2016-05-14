@@ -11,6 +11,7 @@
 #include <time.h>
 #include <syslog.h>
 #include <signal.h>
+#include <limits.h>
 //#include <pthread.h>
 #include "./libs/cJSON/cJSON.h"
 //#include "sensors.h"
@@ -222,9 +223,14 @@ void create_worker_threads()
 
 void do_work(void *job_buffer_ptr)
 {
-    cJSON *root;
-    char local_buff[100] = {0};
-    char send_buff[100] = {0};
+    cJSON *root, *types_array;
+    char local_buff[COMMUNICATION_BUFFER_SIZE] = {0};
+    char send_buff[COMMUNICATION_BUFFER_SIZE] = {0};
+    char *requested_types[NUMBER_OF_SENSOR_TYPES] = {0};
+    char *request_type;
+    char *output_buffer = 0;
+    int page_offset = 0, page_size = 0;
+    int i;
     unsigned int id;
     char *type, *tok;
     double x, y, z;
@@ -249,7 +255,7 @@ void do_work(void *job_buffer_ptr)
         //citaj job->actual_job
         //enqueue if subscribe and return id
         //else insert into db and refresh timestamp
-
+        printf("%s\n", job->actual_job);
         //
         sscanf(job->actual_job, "%s", local_buff);
 
@@ -306,27 +312,57 @@ void do_work(void *job_buffer_ptr)
             //printf("refresh port=%u\n", job->client_info.sin_port);
             root = cJSON_Parse(job->actual_job);
 
-            type = cJSON_GetObjectItem(root, "sensor")->valuestring;
-            id = cJSON_GetObjectItem(root, "id")->valueint;
-            x = cJSON_GetObjectItem(root, "x")->valuedouble;
-            y = cJSON_GetObjectItem(root, "y")->valuedouble;
-            z = cJSON_GetObjectItem(root, "z")->valuedouble;
+            request_type = cJSON_GetObjectItem(root, "type")->valuestring;
 
-            instance = queue_getWithIdType(q, id, type);
-
-            if(instance)
+            if(!strcasecmp(request_type, "upload"))
             {
-                pthread_mutex_lock(&instance->mutex);
+                type = cJSON_GetObjectItem(root, "sensor")->valuestring;
+                id = cJSON_GetObjectItem(root, "id")->valueint;
+                x = cJSON_GetObjectItem(root, "x")->valuedouble;
+                y = cJSON_GetObjectItem(root, "y")->valuedouble;
+                z = cJSON_GetObjectItem(root, "z")->valuedouble;
 
-                instance->last_updated_ts = getMilisecondsFromTS();
 
-                instance->pinged = 0;
+                instance = queue_getWithIdType(q, id, type);
 
-                pthread_mutex_unlock(&instance->mutex);
-                printf("refresh ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
-                //printf("upis u bazu \n");
-                insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
+                if(instance)
+                {
+                    pthread_mutex_lock(&instance->mutex);
+
+                    instance->last_updated_ts = getMilisecondsFromTS();
+
+                    instance->pinged = 0;
+
+                    pthread_mutex_unlock(&instance->mutex);
+                    printf("refresh ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
+                    //printf("upis u bazu \n");
+                    insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
+                }
             }
+            else if(!strcasecmp(request_type, "download"))
+            {
+                page_offset = cJSON_GetObjectItem(root, "offset")->valueint;
+                page_size = cJSON_GetObjectItem(root, "pageSize")->valueint;
+
+                printf("%s\n", job->actual_job);
+
+                types_array = cJSON_GetObjectItem(root, "sensorTypes");
+
+                if(cJSON_GetArraySize(types_array) <= NUMBER_OF_SENSOR_TYPES)
+                    for (i = 0 ; i < cJSON_GetArraySize(types_array); i++)
+                    {
+                        cJSON * subitem = cJSON_GetArrayItem(types_array, i);
+                        requested_types[i] = subitem->valuestring;
+                    }
+
+                output_buffer = get_sensor_readings(page_offset, page_size, requested_types);
+
+                sendto(sock, output_buffer, strlen(output_buffer) + 1, 0, (struct sockaddr*)&job->client_info, sizeof(struct sockaddr_in));
+
+                if(output_buffer)
+                    free(output_buffer);
+            }
+
 
             cJSON_Delete(root);
         }
@@ -496,8 +532,8 @@ unsigned long int getMilisecondsFromTS()
 
 void checkingForKeepAliveTimeInterval()
 {
-    long int timeStamp, sleepTime, sleepTimeFromConfig = 999999;
-    char ping[50];
+    long int timeStamp, sleepTime, sleepTimeFromConfig = LONG_MAX;
+    char ping[PING_BUFF_LEN];
     int i;
     sensor_instance *si = 0, *temp = 0;
     if(!q)

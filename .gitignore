@@ -5,3 +5,4 @@ obj
 bin
 libs
 db_script/startovanje_mariaDB_servera.txt
+.vscode

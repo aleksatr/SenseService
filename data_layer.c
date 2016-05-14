@@ -41,3 +41,86 @@ void insert_sensor_reading(long int id, char *client_address, char *sensor_type,
 
     mysql_close(con);
 }
+
+char* get_sensor_readings(int page_offset, int page_size, char **requested_types)
+{
+    int num_fields, i, j = 0;
+    char temp_buff[COMMUNICATION_BUFFER_SIZE] = {0};
+    MYSQL_RES *result;
+    MYSQL_ROW row;
+    MYSQL *con = mysql_init(0);
+    char query_string[COMMUNICATION_BUFFER_SIZE] = "SELECT client_id, sensor_type, x_value, y_value, z_value, ts FROM Senses WHERE sensor_type in (";
+    char *output_buff = 0;
+
+    if (con == 0)
+    {
+        syslog(LOG_ERR, "mysql_init(0) failed: %s", mysql_error(con));
+        return 0;
+    }
+
+    if (mysql_real_connect(con, db_host, db_user, db_pass, db_name, db_port, 0, 0) == 0)
+    {
+        syslog(LOG_ERR, "Connection to MariaDB server failed: %s", mysql_error(con));
+        syslog(LOG_ERR, "db_host: \"%s\", db_name: \"%s\", db_user: \"%s\", db_pass: \"%s\", db_port: %d",
+                db_host, db_name, db_user, db_pass, db_port);
+
+        mysql_close(con);
+        return 0;
+    }
+
+    //build query string
+    for(i = 0; i < NUMBER_OF_SENSOR_TYPES && requested_types[i] != 0; ++i)
+    {
+        if(!i)
+            sprintf(temp_buff, "\"%s\"", requested_types[i]);
+        else
+        {
+            strcat(temp_buff, ", \"");
+            strcat(temp_buff, requested_types[i]);
+            strcat(temp_buff, "\"");
+        }
+    }
+
+    strcat(query_string, temp_buff);
+    sprintf(temp_buff, ") LIMIT %d OFFSET %d", page_size, page_offset);
+    strcat(query_string, temp_buff);
+
+
+    if (mysql_query(con, query_string))
+    {
+        syslog(LOG_ERR, "mysql_query() failed: %s", mysql_error(con));
+        mysql_close(con);
+        return 0;
+    }
+
+    result = mysql_store_result(con);
+
+    if (result == 0)
+    {
+        syslog(LOG_ERR, "mysql_store_result() failed: %s", mysql_error(con));
+        mysql_close(con);
+        return 0;
+    }
+
+    num_fields = mysql_num_fields(result);
+    output_buff = (char*) malloc(COMMUNICATION_BUFFER_SIZE * page_size);
+
+    output_buff[0] = '[';
+    output_buff[1] = '\0';
+
+    j = 0;
+    while ((row = mysql_fetch_row(result)))
+    {
+        sprintf(temp_buff, "%s{\"id\":%s, \"sensor\":\"%s\", \"x\":%s, \"y\":%s, \"z\":%s, \"timestamp\":\"%s\"}",
+                (j++ ? ", " : ""), row[0], row[1], row[2], row[3], row[4], row[5]);
+
+        strcat(output_buff, temp_buff);
+    }
+
+    strcat(output_buff, "]");
+
+    mysql_free_result(result);
+    mysql_close(con);
+
+    return output_buff;
+}

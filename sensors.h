@@ -7,6 +7,7 @@
 #define CONF_LINE_LENGTH 512
 #define COMMUNICATION_BUFFER_SIZE 1024
 #define JOB_BUFFER_SIZE 100
+#define PING_BUFF_LEN 64
 
 typedef struct
 {
