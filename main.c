@@ -39,6 +39,7 @@ void checkingForKeepAliveTimeInterval();
 unsigned long int getMilisecondsFromTS();
 
 unsigned short int my_udp_port = 3333;
+unsigned short int my_anomaly_port = 6565;
 unsigned short int gc_limit = 20;
 unsigned short int db_port = 3306;
 unsigned short int worker_threads_num = 10;
@@ -57,6 +58,11 @@ sensor_job_buffer *job_buffers = 0;     //job buffers
 int curr_thread = 0;
 int sock = -1;
 
+//anomaly registration stuff
+int anomaly_sock = -1;
+struct sockaddr_in anomaly_broadcast;
+int anomaly_sin_size;
+//
 
 int main(int argc, char **argv)
 {
@@ -65,6 +71,7 @@ int main(int argc, char **argv)
     struct sockaddr_in serverAddress, clientAddress;
     sensor_job_buffer *current_job_buffer;
     sensor_job *job;
+    int broadcast_permission;          /* Socket opt to set permission to broadcast */
 
     //open log
     openlog(NULL, LOG_PID|LOG_CONS, LOG_USER);
@@ -96,11 +103,34 @@ int main(int argc, char **argv)
     serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
     memset(&(serverAddress.sin_zero), '\0', 8);
 
+    bzero((char*) &anomaly_broadcast, sizeof(anomaly_broadcast));
+    anomaly_broadcast.sin_family = AF_INET;
+    anomaly_broadcast.sin_port = htons(my_anomaly_port);
+    anomaly_broadcast.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    memset(&(anomaly_broadcast.sin_zero), '\0', 8);
+
+    anomaly_sin_size = sizeof(struct sockaddr_in);
+
     //kreiranje socketa
     if((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
     {
         syslog(LOG_ERR, "Doslo je do greske prilikom kreiranja socketa...");
         //closelog();
+        exit(1);
+    }
+
+    if((anomaly_sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+    {
+        syslog(LOG_ERR, "Doslo je do greske prilikom kreiranja anomaly socketa...");
+        //closelog();
+        exit(1);
+    }
+
+    /* Set socket to allow broadcast */
+    broadcast_permission = 1;
+    if(setsockopt(anomaly_sock, SOL_SOCKET, SO_BROADCAST, (void *) &broadcast_permission, sizeof(broadcast_permission)) < 0)
+    {
+        syslog(LOG_ERR, "Doslo je do greske prilikom postavljanja permisija za broadcast...");
         exit(1);
     }
 
@@ -113,6 +143,8 @@ int main(int argc, char **argv)
 
     while(1)
     {
+        //memset((void*)communication_buffer, '\0', COMMUNICATION_BUFFER_SIZE);
+
         rnb = recvfrom(sock, communication_buffer, COMMUNICATION_BUFFER_SIZE, 0, (struct sockaddr*) &clientAddress, &addrlen);
 
         //producer
@@ -126,6 +158,7 @@ int main(int argc, char **argv)
 
         job = &current_job_buffer->jobs[current_job_buffer->next_in];
 
+        printf("recv-->%s\n", communication_buffer);
         strcpy(job->actual_job, communication_buffer);
         memcpy(&job->client_info, &clientAddress, addrlen);
 
@@ -145,9 +178,9 @@ void exit_cleanup()
 
     for(i = 0; i < worker_threads_num; ++i)
     {
-        //to do: check if worker_threads[i] is initialized at all
+        //TODO: check if worker_threads[i] is initialized at all
         ret = pthread_cancel(worker_threads[i]);
-        //to do: ok if ret==0, else error
+        //TODO: ok if ret==0, else error
     }
 
     ret = pthread_cancel(queue_thread);
@@ -157,6 +190,9 @@ void exit_cleanup()
 
     if(sock >= 0)
         close(sock);
+
+    if(anomaly_sock >= 0)
+        close(anomaly_sock);
 
     if(worker_threads != 0)
         free(worker_threads);
@@ -209,7 +245,7 @@ void create_worker_threads()
     for(i = 0; i < worker_threads_num; ++i)
     {
         ret = pthread_create(&worker_threads[i], 0, (void*) do_work, (void*) &job_buffers[i]);
-        //to do: ok if ret==0, else error
+        //TODO: ok if ret==0, else error
     }
 
     ret = pthread_create(&queue_thread, 0, (void*) checkingForKeepAliveTimeInterval, 0);
@@ -229,9 +265,10 @@ void do_work(void *job_buffer_ptr)
     char *requested_types[NUMBER_OF_SENSOR_TYPES] = {0};
     char *request_type;
     char *output_buffer = 0;
+    char anomaly_buffer[2 * COMMUNICATION_BUFFER_SIZE] = {0};
     int page_offset = 0, page_size = 0;
     int i;
-    unsigned int id;
+    unsigned int id, old_id = -1;
     char *type, *tok;
     double x, y, z;
     sensor_instance *instance = 0;
@@ -251,20 +288,35 @@ void do_work(void *job_buffer_ptr)
 
         //do your shit
         sensor_job *job = &my_jobs->jobs[my_jobs->next_out];
-        printf("Consumer:  ");
+        //printf("Consumer:  ");
         //citaj job->actual_job
         //enqueue if subscribe and return id
         //else insert into db and refresh timestamp
-        printf("%s\n", job->actual_job);
+        //printf("%s\n", job->actual_job);
         //
         sscanf(job->actual_job, "%s", local_buff);
 
         if(!strcasecmp(local_buff, "subscribe"))
         {
+            sscanf(job->actual_job, "%s %u", local_buff, &old_id);
 
+            //TODO: IF old+id == -1 assign new id, else check if old one exists in db and use it
             //subscribe
-            id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
-            printf("subscribe port=%u, id=%u\n", job->client_info.sin_port, id);
+            if(old_id == -1)
+            {
+                //create new user in DB
+                id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
+            }
+            else
+            {
+                //check DB if user really exists
+                //if true
+                id = old_id;
+                //else
+                //id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
+                //and maybe register anomaly?
+            }
+            //printf("subscribe port=%u, id=%u\n", job->client_info.sin_port, id);
 
             tok = strtok(job->actual_job, "\n");
             tok = strtok(0, "\n");
@@ -294,7 +346,7 @@ void do_work(void *job_buffer_ptr)
                     memcpy(instance->client_info, &job->client_info, sizeof(struct sockaddr_in));
                     instance->type = &sensor_types[k];
 
-                    printf("create ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
+                    //printf("create ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
 
                     queue_enqueue(q, instance);
                 }
@@ -303,13 +355,15 @@ void do_work(void *job_buffer_ptr)
                 tok = strtok(0, "\n");
             }
 
-            printf("id poslat na port %d\n", job->client_info.sin_port);
+            //printf("id poslat na port %d\n", job->client_info.sin_port);
             sprintf(send_buff, "%u", id);
+            printf("send--->%s\n", send_buff);
             sendto(sock, send_buff, strlen(send_buff) + 1, 0, (struct sockaddr*)&job->client_info, sizeof(struct sockaddr_in));
         }
         else
         {
             //printf("refresh port=%u\n", job->client_info.sin_port);
+            strcpy(local_buff, job->actual_job);
             root = cJSON_Parse(job->actual_job);
 
             request_type = cJSON_GetObjectItem(root, "type")->valuestring;
@@ -334,9 +388,22 @@ void do_work(void *job_buffer_ptr)
                     instance->pinged = 0;
 
                     pthread_mutex_unlock(&instance->mutex);
-                    printf("refresh ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
+                    //printf("refresh ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
                     //printf("upis u bazu \n");
                     insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
+                    //TODO: Register anomaly (out of bounds)
+                    //in database, syslog, broadcast anomaly
+                }
+                else
+                {
+                    //TODO: Register anomaly (unregistered)
+                    //in database, syslog, broadcast anomaly
+                    sprintf(anomaly_buffer, "{\"description\":\"Unregistered user is trying to upload sensor reading! Dropping upload data!\",\"lastReading\":%s}",
+                            local_buff);
+                    sendto(anomaly_sock, anomaly_buffer, strlen(anomaly_buffer) + 1, 0, (struct sockaddr*)&anomaly_broadcast, anomaly_sin_size);
+                    printf("send--->%s\n", anomaly_buffer);
+                    syslog(LOG_WARNING, anomaly_buffer);
+                    //insert into anomaly table
                 }
             }
             else if(!strcasecmp(request_type, "download"))
@@ -344,7 +411,7 @@ void do_work(void *job_buffer_ptr)
                 page_offset = cJSON_GetObjectItem(root, "offset")->valueint;
                 page_size = cJSON_GetObjectItem(root, "pageSize")->valueint;
 
-                printf("%s\n", job->actual_job);
+                //printf("%s\n", job->actual_job);
 
                 types_array = cJSON_GetObjectItem(root, "sensorTypes");
 
@@ -358,7 +425,7 @@ void do_work(void *job_buffer_ptr)
                 output_buffer = get_sensor_readings(page_offset, page_size, requested_types);
 
                 sendto(sock, output_buffer, strlen(output_buffer) + 1, 0, (struct sockaddr*)&job->client_info, sizeof(struct sockaddr_in));
-
+                printf("send--->%s\n", output_buffer);
                 if(output_buffer)
                     free(output_buffer);
             }
@@ -403,6 +470,8 @@ void load_service_conf()
 
         if(!strcasecmp("UDP_PORT", key))
             sscanf(value, "%hu", &my_udp_port);
+        else if(!strcasecmp("ANOMALY_PORT", key))
+            sscanf(value, "%hu", &my_anomaly_port);
         else if(!strcasecmp("GC_LIMIT", key))
             sscanf(value, "%hu", &gc_limit);
         else if(!strcasecmp("DB_PORT", key))
@@ -442,6 +511,8 @@ void load_service_conf()
         closelog();
         exit(1);
     }
+
+    //TODO: create tables if not exist
 }
 
 void load_sensors_conf()
@@ -518,7 +589,7 @@ void destroy_job_buffer(sensor_job_buffer* buff)
     ret = sem_destroy(&buff->access);
     ret = sem_destroy(&buff->free);
     ret = sem_destroy(&buff->occupied);
-    //to do: check ret value
+    //todo: check ret value
 
 }
 
@@ -569,13 +640,15 @@ void checkingForKeepAliveTimeInterval()
                 temp = si->next;
                 pthread_mutex_unlock(&si->mutex);
                 printf("remove %ld \n", si->id);
+                //TODO: Register anomaly (not responding)
+                //in database, syslog, broadcast anomaly
                 sensor_instance_destroy(si);
                 si = temp;
             } else if ((!si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
             {
                 sprintf(ping,"ping\n%s", si->type->name);
                 sendto(sock, ping, strlen(ping) + 1, 0, (struct sockaddr*) si->client_info, sizeof(struct sockaddr_in));
-                printf("ping %u \n", si->client_info->sin_port);
+                printf("ping %u \n", si->id);
                 si->pinged = 1;
                 pthread_mutex_unlock(&si->mutex);
             } else
