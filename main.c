@@ -62,6 +62,10 @@ int sock = -1;
 int anomaly_sock = -1;
 struct sockaddr_in anomaly_broadcast;
 int anomaly_sin_size;
+//table ids
+pthread_mutex_t db_insert_mutex;
+//my_ulonglong next_users_id = 1;
+//my_ulonglong next_senses_id = 1;
 //
 
 int main(int argc, char **argv)
@@ -203,6 +207,8 @@ void exit_cleanup()
     if(q)
         queue_destroy(q);
 
+    pthread_mutex_destroy(&db_insert_mutex);
+
     syslog(LOG_INFO, "exiting...");
 
     closelog();
@@ -266,6 +272,7 @@ void do_work(void *job_buffer_ptr)
     char *request_type;
     char *output_buffer = 0;
     char anomaly_buffer[2 * COMMUNICATION_BUFFER_SIZE] = {0};
+    char description[COMMUNICATION_BUFFER_SIZE] = {0};
     int page_offset = 0, page_size = 0;
     int i;
     unsigned int id, old_id = -1;
@@ -387,12 +394,35 @@ void do_work(void *job_buffer_ptr)
 
                     instance->pinged = 0;
 
+                    description[0] = '\0';
+
+
+                    if(instance->type->max_x < x)
+                        strcat(description, " x overflow");
+                    else if(instance->type->min_x > x)
+                        strcat(description, " x underflow");
+                    if(instance->type->max_y < y)
+                        strcat(description, " y overflow");
+                    else if(instance->type->min_y > y)
+                        strcat(description, " y underflow");
+                    if(instance->type->max_z < z)
+                        strcat(description, " z overflow");
+                    else if(instance->type->min_z > z)
+                        strcat(description, " z underflow");
+
                     pthread_mutex_unlock(&instance->mutex);
                     //printf("refresh ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
                     //printf("upis u bazu \n");
                     insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
                     //TODO: Register anomaly (out of bounds)
                     //in database, syslog, broadcast anomaly
+                    if(strlen(description) > 1)
+                    {
+                        sprintf(anomaly_buffer, "{\"description\":\"%s\",\"lastReading\":%s}", description,
+                            local_buff);
+                        sendto(anomaly_sock, anomaly_buffer, strlen(anomaly_buffer) + 1, 0, (struct sockaddr*)&anomaly_broadcast, anomaly_sin_size);
+                        printf("send--->%s\n", anomaly_buffer);
+                    }
                 }
                 else
                 {
@@ -511,8 +541,6 @@ void load_service_conf()
         closelog();
         exit(1);
     }
-
-    //TODO: create tables if not exist
 }
 
 void load_sensors_conf()
@@ -528,6 +556,9 @@ void load_sensors_conf()
         closelog();
         exit(1);
     }
+
+    for(i = 0; i < NUMBER_OF_SENSOR_TYPES; ++i)
+        sensor_types[i].name[0] = '\0';
 
     while(!feof(conf))
     {
@@ -567,6 +598,9 @@ void load_sensors_conf()
     }
 
     fclose(conf);
+
+    pthread_mutex_init(&db_insert_mutex, 0);
+    create_tables();
 }
 
 void initialize_job_buffer(sensor_job_buffer* buff)

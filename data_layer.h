@@ -9,6 +9,11 @@
 
 void insert_sensor_reading(long int id, char *client_address, char *sensor_type, double x, double y, double z);
 
+void create_tables();
+
+void register_user(int id);
+int check_user_exists(int id);
+
 char* get_sensor_readings(int page_offset, int page_size, char **requested_types);
 
 //to do: read_from_db
