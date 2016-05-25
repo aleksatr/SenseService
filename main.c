@@ -313,12 +313,23 @@ void do_work(void *job_buffer_ptr)
             {
                 //create new user in DB
                 id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
+                register_user(id, inet_ntoa(job->client_info.sin_addr));
             }
             else
             {
                 //check DB if user really exists
                 //if true
-                id = old_id;
+                if(check_user_exists(old_id, inet_ntoa(job->client_info.sin_addr)))
+                {
+                    id = old_id;
+                }
+                else
+                {
+                    //TODO: register anomaly, id doesn't exist
+                    id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
+                    register_user(id, inet_ntoa(job->client_info.sin_addr));
+                }
+
                 //else
                 //id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
                 //and maybe register anomaly?
@@ -413,7 +424,9 @@ void do_work(void *job_buffer_ptr)
                     pthread_mutex_unlock(&instance->mutex);
                     //printf("refresh ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
                     //printf("upis u bazu \n");
-                    insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
+                    //insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
+                    //TODO: get id from user table based on client_id
+                    insert_sensor_reading(id, local_buff, type, x, y, z);
                     //TODO: Register anomaly (out of bounds)
                     //in database, syslog, broadcast anomaly
                     if(strlen(description) > 1)

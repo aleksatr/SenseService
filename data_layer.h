@@ -7,12 +7,12 @@
 #include "mariadb/mysql.h"
 #include "sensors.h"
 
-void insert_sensor_reading(long int id, char *client_address, char *sensor_type, double x, double y, double z);
+void insert_sensor_reading(int user_id, char *json, char *sensor_type, double x, double y, double z);
 
 void create_tables();
 
-void register_user(int id);
-int check_user_exists(int id);
+void register_user(int id, char* client_address);
+int check_user_exists(int id, char* client_address);
 
 char* get_sensor_readings(int page_offset, int page_size, char **requested_types);
 
