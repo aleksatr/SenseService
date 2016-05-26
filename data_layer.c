@@ -115,7 +115,6 @@ void create_tables()
 
 void insert_sensor_reading(int user_id, char *json, char *sensor_type, double x, double y, double z)
 {
-    int i;
     my_ulonglong curr_senses_id = 1;
     char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
     MYSQL *con = mysql_init(0);
@@ -173,7 +172,7 @@ char* get_sensor_readings(int page_offset, int page_size, char **requested_types
     MYSQL_RES *result;
     MYSQL_ROW row;
     MYSQL *con = mysql_init(0);
-    char query_string[COMMUNICATION_BUFFER_SIZE] = "SELECT client_id, sensor_type, x_value, y_value, z_value, ts FROM Senses WHERE sensor_type in (";
+    char query_string[NUMBER_OF_SENSOR_TYPES*COMMUNICATION_BUFFER_SIZE] = {0};
     char *output_buff = 0;
 
     if (con == 0)
@@ -196,17 +195,15 @@ char* get_sensor_readings(int page_offset, int page_size, char **requested_types
     for(i = 0; i < NUMBER_OF_SENSOR_TYPES && requested_types[i] != 0; ++i)
     {
         if(!i)
-            sprintf(temp_buff, "\"%s\"", requested_types[i]);
+            sprintf(query_string, "(select client_id, '%s', x_value, y_value, z_value, ts from %s, senses, users where senses_id = senses.id and user_id = users.client_id)", requested_types[i], requested_types[i]);
         else
         {
-            strcat(temp_buff, ", \"");
-            strcat(temp_buff, requested_types[i]);
-            strcat(temp_buff, "\"");
+            sprintf(temp_buff, " union (select client_id, '%s', x_value, y_value, z_value, ts from %s, senses, users where senses_id = senses.id and user_id = users.client_id)", requested_types[i], requested_types[i]);
+            strcat(query_string, temp_buff);
         }
     }
 
-    strcat(query_string, temp_buff);
-    sprintf(temp_buff, ") LIMIT %d OFFSET %d", page_size, page_offset);
+    sprintf(temp_buff, " LIMIT %d OFFSET %d", page_size, page_offset);
     strcat(query_string, temp_buff);
 
 
