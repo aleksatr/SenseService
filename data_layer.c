@@ -73,7 +73,7 @@ void create_tables()
     sprintf(query_string,  "CREATE TABLE IF NOT EXISTS anomaly \
                             ( \
                                 id INTEGER AUTO_INCREMENT, \
-                                senses_id INTEGER NOT NULL, \
+                                senses_id INTEGER, \
                                 description VARCHAR(100), \
                                 PRIMARY KEY (id), \
                                 FOREIGN KEY (senses_id) REFERENCES senses(id) ON DELETE CASCADE \
@@ -113,9 +113,8 @@ void create_tables()
     mysql_close(con);
 }
 
-void insert_sensor_reading(int user_id, char *json, char *sensor_type, double x, double y, double z)
+unsigned int insert_sensor_reading(unsigned int user_id, char *json, char *sensor_type, double x, double y, double z)
 {
-    int i;
     my_ulonglong curr_senses_id = 1;
     char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
     MYSQL *con = mysql_init(0);
@@ -123,7 +122,7 @@ void insert_sensor_reading(int user_id, char *json, char *sensor_type, double x,
     if (con == 0)
     {
         syslog(LOG_ERR, "mysql_init(0) failed: %s", mysql_error(con));
-        return;
+        return -1;
     }
 
     if (mysql_real_connect(con, db_host, db_user, db_pass, db_name, db_port, 0, 0) == 0)
@@ -133,7 +132,7 @@ void insert_sensor_reading(int user_id, char *json, char *sensor_type, double x,
                 db_host, db_name, db_user, db_pass, db_port);
 
         mysql_close(con);
-        return;
+        return -1;
     }
 
     sprintf(query_string, "INSERT INTO senses(user_id, json, ts) VALUES (%d, '%s', NULL)",
@@ -146,7 +145,7 @@ void insert_sensor_reading(int user_id, char *json, char *sensor_type, double x,
         syslog(LOG_ERR, "Query string: %s", query_string);
         mysql_close(con);
         pthread_mutex_unlock(&db_insert_mutex);
-        return;
+        return -1;
     }
 
     curr_senses_id = mysql_insert_id(con);
@@ -160,10 +159,11 @@ void insert_sensor_reading(int user_id, char *json, char *sensor_type, double x,
         syslog(LOG_ERR, "Query execution failed: %s", mysql_error(con));
         syslog(LOG_ERR, "Query string: %s", query_string);
         mysql_close(con);
-        return;
+        return -1;
     }
 
     mysql_close(con);
+    return curr_senses_id;
 }
 
 char* get_sensor_readings(int page_offset, int page_size, char **requested_types)
@@ -346,6 +346,43 @@ void register_user(int id, char* client_address)
 
     sprintf(query_string, "INSERT INTO users(client_id, client_address, created_ts) VALUES (%ld, '%s', NULL)",
                 id, client_address);
+
+    if (mysql_query(con, query_string))
+    {
+        printf("Query execution failed: %s \n", mysql_error(con));
+        printf("Query string: %s \n", query_string);
+        mysql_close(con);
+        return;
+    }
+
+    mysql_close(con);
+}
+void insert_anomaly(unsigned int sense_id, char* description)
+{
+    int i;
+    char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
+    MYSQL *con = mysql_init(0);
+
+    if (con == 0)
+    {
+        syslog(LOG_ERR, "mysql_init(0) failed: %s", mysql_error(con));
+        return;
+    }
+
+    if (mysql_real_connect(con, db_host, db_user, db_pass, db_name, db_port, 0, 0) == 0)
+    {
+        syslog(LOG_ERR, "Connection to MariaDB server failed: %s", mysql_error(con));
+        syslog(LOG_ERR, "db_host: \"%s\", db_name: \"%s\", db_user: \"%s\", db_pass: \"%s\", db_port: %d",
+                db_host, db_name, db_user, db_pass, db_port);
+
+        mysql_close(con);
+        return;
+    }
+
+    if (!sense_id)
+        sprintf(query_string, "INSERT INTO anomaly(senses_id, description) VALUES (NULL, '%s')", description);
+    else
+        sprintf(query_string, "INSERT INTO anomaly(senses_id, description) VALUES (%ld, '%s')", sense_id, description);
 
     if (mysql_query(con, query_string))
     {

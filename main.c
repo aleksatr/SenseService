@@ -426,7 +426,7 @@ void do_work(void *job_buffer_ptr)
                     //printf("upis u bazu \n");
                     //insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
                     //TODO: get id from user table based on client_id
-                    insert_sensor_reading(id, local_buff, type, x, y, z);
+                    unsigned int sense_id = insert_sensor_reading(id, local_buff, type, x, y, z);
                     //TODO: Register anomaly (out of bounds)
                     //in database, syslog, broadcast anomaly
                     if(strlen(description) > 1)
@@ -434,6 +434,11 @@ void do_work(void *job_buffer_ptr)
                         sprintf(anomaly_buffer, "{\"description\":\"%s\",\"lastReading\":%s}", description,
                             local_buff);
                         sendto(anomaly_sock, anomaly_buffer, strlen(anomaly_buffer) + 1, 0, (struct sockaddr*)&anomaly_broadcast, anomaly_sin_size);
+                        if(sense_id != -1)
+                        {
+                            insert_anomaly(sense_id, description);
+                        }
+
                         printf("send--->%s\n", anomaly_buffer);
                     }
                 }
@@ -689,6 +694,7 @@ void checkingForKeepAliveTimeInterval()
                 printf("remove %ld \n", si->id);
                 //TODO: Register anomaly (not responding)
                 //in database, syslog, broadcast anomaly
+                insert_anomaly(0, "Sensor not responding.");
                 sensor_instance_destroy(si);
                 si = temp;
             } else if ((!si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
