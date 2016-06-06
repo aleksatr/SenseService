@@ -357,7 +357,6 @@ void register_user(int id, char* client_address)
 }
 void insert_anomaly(unsigned int sense_id, char* description)
 {
-    int i;
     char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
     MYSQL *con = mysql_init(0);
 
@@ -391,4 +390,100 @@ void insert_anomaly(unsigned int sense_id, char* description)
     }
 
     mysql_close(con);
+}
+void insert_subscribe(unsigned int sense_id, char* json)
+{
+    char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
+    MYSQL *con = mysql_init(0);
+
+    if (con == 0)
+    {
+        syslog(LOG_ERR, "mysql_init(0) failed: %s", mysql_error(con));
+        return;
+    }
+
+    if (mysql_real_connect(con, db_host, db_user, db_pass, db_name, db_port, 0, 0) == 0)
+    {
+        syslog(LOG_ERR, "Connection to MariaDB server failed: %s", mysql_error(con));
+        syslog(LOG_ERR, "db_host: \"%s\", db_name: \"%s\", db_user: \"%s\", db_pass: \"%s\", db_port: %d",
+                db_host, db_name, db_user, db_pass, db_port);
+
+        mysql_close(con);
+        return;
+    }
+
+    if (sense_id < 1)
+        sprintf(query_string, "INSERT INTO senses(user_id, json) VALUES (NULL, '%s')", json);
+    else
+        sprintf(query_string, "INSERT INTO senses(user_id, json) VALUES (%ld, '%s')", sense_id, json);
+
+    if (mysql_query(con, query_string))
+    {
+        printf("Query execution failed: %s \n", mysql_error(con));
+        printf("Query string: %s \n", query_string);
+        mysql_close(con);
+        return;
+    }
+
+    mysql_close(con);
+}
+
+unsigned int get_last_reading(unsigned int sense_id)
+{
+    //"select json from senses where user_id = 1330738023 order by ts desc LIMIT 1;"
+
+    int num_fields, idFromDb = 0;
+    MYSQL_RES *result;
+    MYSQL_ROW row;
+    MYSQL *con = mysql_init(0);
+    char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
+    char temp_buff[COMMUNICATION_BUFFER_SIZE] = {0};
+    if (con == 0)
+    {
+        syslog(LOG_ERR, "mysql_init(0) failed: %s", mysql_error(con));
+        return 0;
+    }
+
+    if (mysql_real_connect(con, db_host, db_user, db_pass, db_name, db_port, 0, 0) == 0)
+    {
+        syslog(LOG_ERR, "Connection to MariaDB server failed: %s", mysql_error(con));
+        syslog(LOG_ERR, "db_host: \"%s\", db_name: \"%s\", db_user: \"%s\", db_pass: \"%s\", db_port: %d",
+                db_host, db_name, db_user, db_pass, db_port);
+
+        mysql_close(con);
+        return 0;
+    }
+
+    sprintf(query_string, "select id from senses where user_id = %u order by ts desc LIMIT 1", sense_id);
+    //build query string
+
+    if (mysql_query(con, query_string))
+    {
+        syslog(LOG_ERR, "mysql_query() failed: %s", mysql_error(con));
+        mysql_close(con);
+        return 0;
+    }
+
+    result = mysql_store_result(con);
+
+    if (result == 0)
+    {
+        syslog(LOG_ERR, "mysql_store_result() failed: %s", mysql_error(con));
+        mysql_close(con);
+        return 0;
+    }
+
+    num_fields = mysql_num_fields(result);
+
+    while ((row = mysql_fetch_row(result)))
+    {
+       // sprintf(temp_buff, "%s{\"id\":%s, \"sensor\":\"%s\", \"x\":%s, \"y\":%s, \"z\":%s, \"timestamp\":\"%s\"}",
+        //        (j++ ? ", " : ""), row[0], row[1], row[2], row[3], row[4], row[5]);
+        sscanf(row[0], "%u", &idFromDb);
+    }
+
+    mysql_free_result(result);
+    mysql_close(con);
+
+    return idFromDb;
 }

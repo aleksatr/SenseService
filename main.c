@@ -273,6 +273,8 @@ void do_work(void *job_buffer_ptr)
     char *output_buffer = 0;
     char anomaly_buffer[2 * COMMUNICATION_BUFFER_SIZE] = {0};
     char description[COMMUNICATION_BUFFER_SIZE] = {0};
+    char subscribe_json[COMMUNICATION_BUFFER_SIZE] = {0};
+    char subscribed_types[COMMUNICATION_BUFFER_SIZE] = {0};
     int page_offset = 0, page_size = 0;
     int i;
     unsigned int id, old_id = -1;
@@ -339,16 +341,30 @@ void do_work(void *job_buffer_ptr)
             tok = strtok(job->actual_job, "\n");
             tok = strtok(0, "\n");
 
+            subscribed_types[0] = '\0';
             while(tok != 0)
             {
                 if(!strcasecmp("accelerometer", tok))
+                {
                     k = accelerometer;
-                else if(!strcasecmp("gyroscope", tok))
+                    strcat(subscribed_types, "\"accelerometer\",");
+                } else if(!strcasecmp("gyroscope", tok))
+                {
                     k = gyroscope;
+                    strcat(subscribed_types, "\"gyroscope\",");
+                }
                 else if(!strcasecmp("magnetometer", tok))
+                {
                     k = magnetometer;
+                    strcat(subscribed_types, "\"magnetometer\",");
+                }
                 else if(!strcasecmp("gps", tok))
+                {
                     k = gps;
+                    strcat(subscribed_types, "\"gps\",");
+                }
+
+
 
                 if(k >= 0)
                 {
@@ -369,9 +385,15 @@ void do_work(void *job_buffer_ptr)
                     queue_enqueue(q, instance);
                 }
 
+
+
                 k = -1;
                 tok = strtok(0, "\n");
             }
+            subscribed_types[strlen(subscribed_types) - 1] = '\0';
+            sprintf(subscribe_json, "{\"type\":\"subscribe\", \"id\":%u, \"sensors\":[%s]}", old_id, subscribed_types);
+
+            insert_subscribe(id, subscribe_json);
 
             //printf("id poslat na port %d\n", job->client_info.sin_port);
             sprintf(send_buff, "%u", id);
@@ -451,7 +473,7 @@ void do_work(void *job_buffer_ptr)
                     sendto(anomaly_sock, anomaly_buffer, strlen(anomaly_buffer) + 1, 0, (struct sockaddr*)&anomaly_broadcast, anomaly_sin_size);
                     printf("send--->%s\n", anomaly_buffer);
                     syslog(LOG_WARNING, anomaly_buffer);
-                    //insert into anomaly table
+                    insert_anomaly(0, anomaly_buffer);
                 }
             }
             else if(!strcasecmp(request_type, "download"))
@@ -690,11 +712,12 @@ void checkingForKeepAliveTimeInterval()
             {
                 queue_removeWithId(q, si);
                 temp = si->next;
+                unsigned int sensor_id = si->id;
                 pthread_mutex_unlock(&si->mutex);
                 printf("remove %ld \n", si->id);
                 //TODO: Register anomaly (not responding)
                 //in database, syslog, broadcast anomaly
-                insert_anomaly(0, "Sensor not responding.");
+                insert_anomaly(get_last_reading(sensor_id), "Sensor not responding.");
                 sensor_instance_destroy(si);
                 si = temp;
             } else if ((!si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
