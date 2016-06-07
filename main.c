@@ -328,11 +328,8 @@ void do_work(void *job_buffer_ptr)
                     //TODO: register anomaly, id doesn't exist
                     id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
                     register_user(id, inet_ntoa(job->client_info.sin_addr));
+                    //
                 }
-
-                //else
-                //id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
-                //and maybe register anomaly?
             }
             //printf("subscribe port=%u, id=%u\n", job->client_info.sin_port, id);
 
