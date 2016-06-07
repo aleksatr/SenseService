@@ -680,6 +680,7 @@ void checkingForKeepAliveTimeInterval()
     long int timeStamp, sleepTime, sleepTimeFromConfig = LONG_MAX;
     char ping[PING_BUFF_LEN];
     char *anomaly_buff;
+    char broadcast_buff[COMMUNICATION_BUFFER_SIZE * 2];
     int i;
     unsigned int sense_id;
     sensor_instance *si = 0, *temp = 0;
@@ -724,9 +725,15 @@ void checkingForKeepAliveTimeInterval()
                     free(anomaly_buff);
                     anomaly_buff = get_last_reading(si->id, &sense_id);
                 }
-                free(anomaly_buff);
+
                 insert_anomaly(sense_id, "Sensor not responding.");
+
                 pthread_mutex_unlock(&si->mutex);
+                sprintf(broadcast_buff, "{\"description\":\"Sensor not responding.\",\"lastReading\":%s}", anomaly_buff);
+
+                free(anomaly_buff);
+                sendto(anomaly_sock, broadcast_buff, strlen(broadcast_buff) + 1, 0, (struct sockaddr*)&anomaly_broadcast, anomaly_sin_size);
+
                 sensor_instance_destroy(si);
                 si = temp;
             } else if ((!si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))
