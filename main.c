@@ -679,7 +679,9 @@ void checkingForKeepAliveTimeInterval()
 {
     long int timeStamp, sleepTime, sleepTimeFromConfig = LONG_MAX;
     char ping[PING_BUFF_LEN];
+    char *anomaly_buff;
     int i;
+    unsigned int sense_id;
     sensor_instance *si = 0, *temp = 0;
     if(!q)
     {
@@ -688,8 +690,8 @@ void checkingForKeepAliveTimeInterval()
     }
     for(i = 0; i < NUMBER_OF_SENSOR_TYPES; i++)
     {
-        if(sleepTimeFromConfig > sensor_types[i].keep_alive*1000)
-            sleepTimeFromConfig = sensor_types[i].keep_alive*1000;
+        if(sleepTimeFromConfig > sensor_types[i].keep_alive * 1000)
+            sleepTimeFromConfig = sensor_types[i].keep_alive * 1000;
     }
     timeStamp = getMilisecondsFromTS();
     while(1)
@@ -712,12 +714,19 @@ void checkingForKeepAliveTimeInterval()
             {
                 queue_removeWithId(q, si);
                 temp = si->next;
-                unsigned int sensor_id = si->id;
-                pthread_mutex_unlock(&si->mutex);
+
                 printf("remove %ld \n", si->id);
                 //TODO: Register anomaly (not responding)
                 //in database, syslog, broadcast anomaly
-                insert_anomaly(get_last_reading(sensor_id), "Sensor not responding.");
+                anomaly_buff = get_last_reading_for_sensor_name(si->id, &sense_id, si->type->name);
+                if(!strlen(anomaly_buff))
+                {
+                    free(anomaly_buff);
+                    anomaly_buff = get_last_reading(si->id, &sense_id);
+                }
+                free(anomaly_buff);
+                insert_anomaly(sense_id, "Sensor not responding.");
+                pthread_mutex_unlock(&si->mutex);
                 sensor_instance_destroy(si);
                 si = temp;
             } else if ((!si->pinged) && (timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000)))

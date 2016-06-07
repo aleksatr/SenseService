@@ -57,4 +57,12 @@ enum sensor_enum
     NUMBER_OF_SENSOR_TYPES
 };
 
+inline char* string_from_sensor_enum(enum sensor_enum se)
+{
+    const char* strings[] = { "accelerometer", "gyroscope", "magnetometer", "gps"};
+
+    return strings[se];
+};
+
+
 #endif // SENSORS_H_INCLUDED
