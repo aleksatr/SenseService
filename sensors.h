@@ -57,4 +57,5 @@ enum sensor_enum
     NUMBER_OF_SENSOR_TYPES
 };
 
+
 #endif // SENSORS_H_INCLUDED
