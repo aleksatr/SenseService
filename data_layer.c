@@ -135,7 +135,7 @@ unsigned int insert_sensor_reading(unsigned int user_id, char *json, char *senso
         return -1;
     }
 
-    sprintf(query_string, "INSERT INTO senses(user_id, json, ts) VALUES (%d, '%s', NULL)",
+    sprintf(query_string, "INSERT INTO senses(user_id, json, ts) VALUES (%u, '%s', NULL)",
                 user_id, json);
 
     pthread_mutex_lock(&db_insert_mutex);
