@@ -3,6 +3,7 @@
 *.layout
 obj
 bin
-libs
 db_script/startovanje_mariaDB_servera.txt
 .vscode
+SenseService.cscope_file_list
+cscope.out
