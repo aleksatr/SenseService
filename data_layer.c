@@ -298,7 +298,7 @@ int check_user_exists(int id, char* client_address)
        // sprintf(temp_buff, "%s{\"id\":%s, \"sensor\":\"%s\", \"x\":%s, \"y\":%s, \"z\":%s, \"timestamp\":\"%s\"}",
         //        (j++ ? ", " : ""), row[0], row[1], row[2], row[3], row[4], row[5]);
         sscanf(row[0], "%d", &idFromDb);
-        sscanf(row[1], "%s", temp_buff);
+        strcpy(temp_buff, row[1]);
 
         if (strcmp(client_address, temp_buff))
         {
@@ -438,7 +438,7 @@ char* get_last_reading(unsigned int user_id, unsigned int *sense_id)
     MYSQL *con = mysql_init(0);
     char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
     char temp_buff[COMMUNICATION_BUFFER_SIZE] = {0};
-    char *output_buff = (char*) malloc(COMMUNICATION_BUFFER_SIZE * 10);
+    char *output_buff = (char*) malloc(COMMUNICATION_BUFFER_SIZE);
 
     output_buff[0] = '\0';
     if (con == 0)
@@ -483,7 +483,7 @@ char* get_last_reading(unsigned int user_id, unsigned int *sense_id)
        // sprintf(temp_buff, "%s{\"id\":%s, \"sensor\":\"%s\", \"x\":%s, \"y\":%s, \"z\":%s, \"timestamp\":\"%s\"}",
         //        (j++ ? ", " : ""), row[0], row[1], row[2], row[3], row[4], row[5]);
         sscanf(row[0], "%u", &idFromDb);
-        sscanf(row[1], "%s", output_buff);
+        strcpy(output_buff, row[1]);
     }
 
     *sense_id = idFromDb;
@@ -546,7 +546,7 @@ char* get_last_reading_for_sensor_name(unsigned int user_id, unsigned int *sense
        // sprintf(temp_buff, "%s{\"id\":%s, \"sensor\":\"%s\", \"x\":%s, \"y\":%s, \"z\":%s, \"timestamp\":\"%s\"}",
         //        (j++ ? ", " : ""), row[0], row[1], row[2], row[3], row[4], row[5]);
         sscanf(row[0], "%u", sense_id);
-        sscanf(row[1], "%s", output_buff);
+        strcpy(output_buff, row[1]);
     }
 
     mysql_free_result(result);

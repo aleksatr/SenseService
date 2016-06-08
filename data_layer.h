@@ -20,6 +20,5 @@ void insert_subscribe(unsigned int sense_id, char* json);
 char* get_last_reading(unsigned int user_id, unsigned int *sense_id);
 char* get_last_reading_for_sensor_name(unsigned int user_id, unsigned int *sense_id, char* sensor_name);
 
-//to do: read_from_db
 
 #endif // DATA_LAYER_H_INCLUDED

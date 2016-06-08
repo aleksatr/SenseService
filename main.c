@@ -724,12 +724,19 @@ void checkingForKeepAliveTimeInterval()
                 {
                     free(anomaly_buff);
                     anomaly_buff = get_last_reading(si->id, &sense_id);
+                    sprintf(broadcast_buff, "{\"description\":\"Sensor not responding.\",\"lastSubscribe\":%s}", anomaly_buff);
+                } else
+                {
+                    sprintf(broadcast_buff, "{\"description\":\"Sensor not responding.\",\"lastReading\":%s}", anomaly_buff);
                 }
 
                 insert_anomaly(sense_id, "Sensor not responding.");
 
                 pthread_mutex_unlock(&si->mutex);
-                sprintf(broadcast_buff, "{\"description\":\"Sensor not responding.\",\"lastReading\":%s}", anomaly_buff);
+               // sprintf(broadcast_buff, "{\"description\":\"Sensor not responding.\",\"lastReading\":%s}", anomaly_buff);
+
+                printf("%s\n", anomaly_buff);
+                printf("%s\n", broadcast_buff);
 
                 free(anomaly_buff);
                 sendto(anomaly_sock, broadcast_buff, strlen(broadcast_buff) + 1, 0, (struct sockaddr*)&anomaly_broadcast, anomaly_sin_size);
