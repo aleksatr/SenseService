@@ -495,8 +495,24 @@ void do_work(void *job_buffer_ptr)
                 printf("send--->%s\n", output_buffer);
                 if(output_buffer)
                     free(output_buffer);
-            }
+            } else if(!strcasecmp(request_type, "download_anomalies"))
+            {
+                page_offset = cJSON_GetObjectItem(root, "offset")->valueint;
+                page_size = cJSON_GetObjectItem(root, "pageSize")->valueint;
 
+                //printf("%s\n", job->actual_job);
+
+
+                output_buffer = get_anomalies(page_offset, page_size);
+                if(output_buffer)
+                {
+                    printf("%s\n", output_buffer);
+                    sendto(sock, output_buffer, strlen(output_buffer) + 1, 0, (struct sockaddr*)&job->client_info, sizeof(struct sockaddr_in));
+                    printf("send--->%s\n", output_buffer);
+
+                    free(output_buffer);
+                }
+            }
 
             cJSON_Delete(root);
         }
@@ -721,7 +737,7 @@ void checkingForKeepAliveTimeInterval()
                 {
                     free(anomaly_buff);
                     anomaly_buff = get_last_reading(si->id, &sense_id);
-                    sprintf(broadcast_buff, "{\"description\":\"Sensor not responding.\",\"lastSubscribe\":%s}", anomaly_buff);
+                    sprintf(broadcast_buff, "{\"description\":\"Sensor not responding.\",\"lastReading\":%s}", anomaly_buff);
                 } else
                 {
                     sprintf(broadcast_buff, "{\"description\":\"Sensor not responding.\",\"lastReading\":%s}", anomaly_buff);

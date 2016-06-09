@@ -554,3 +554,74 @@ char* get_last_reading_for_sensor_name(unsigned int user_id, unsigned int *sense
 
     return output_buff;
 }
+
+char* get_anomalies(int page_offset, int page_size)
+{
+    int num_fields, i, j = 0;
+    char temp_buff[COMMUNICATION_BUFFER_SIZE] = {0};
+    MYSQL_RES *result;
+    MYSQL_ROW row;
+    MYSQL *con = mysql_init(0);
+    char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
+    char *output_buff = 0;
+
+    if (con == 0)
+    {
+        syslog(LOG_ERR, "mysql_init(0) failed: %s", mysql_error(con));
+        return 0;
+    }
+
+    if (mysql_real_connect(con, db_host, db_user, db_pass, db_name, db_port, 0, 0) == 0)
+    {
+        syslog(LOG_ERR, "Connection to MariaDB server failed: %s", mysql_error(con));
+        syslog(LOG_ERR, "db_host: \"%s\", db_name: \"%s\", db_user: \"%s\", db_pass: \"%s\", db_port: %d",
+                db_host, db_name, db_user, db_pass, db_port);
+
+        mysql_close(con);
+        return 0;
+    }
+
+    sprintf(query_string, "select s.json, a.description from senses s, anomaly a where a.senses_id = s.id LIMIT %d OFFSET %d", page_size, page_offset);
+
+    if (mysql_query(con, query_string))
+    {
+        printf("mysql_query() failed: %s", mysql_error(con));
+        printf("Query string: %s \n", query_string);
+        mysql_close(con);
+        return 0;
+    }
+
+    result = mysql_store_result(con);
+
+    if (result == 0)
+    {
+        syslog(LOG_ERR, "mysql_store_result() failed: %s", mysql_error(con));
+        mysql_close(con);
+        return 0;
+    }
+
+    num_fields = mysql_num_fields(result);
+    output_buff = (char*) malloc(COMMUNICATION_BUFFER_SIZE * page_size);
+
+    output_buff[0] = '[';
+    output_buff[1] = '\0';
+
+    j = 0;
+    while ((row = mysql_fetch_row(result)))
+    {
+        //"{\"description\":\"Sensor not responding.\",\"lastReading\":%s}"
+        sprintf(temp_buff, "%s{\"description\":\"%s\",\"lastReading\":%s}",
+                (j++ ? ", " : ""), row[1], row[0]);
+
+        strcat(output_buff, temp_buff);
+    }
+
+    printf("broj podatka: %d\n", j);
+
+    strcat(output_buff, "]");
+
+    mysql_free_result(result);
+    mysql_close(con);
+
+    return output_buff;
+}
