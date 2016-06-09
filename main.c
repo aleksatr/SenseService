@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-//#include <netinet/in.h> //sadrzi definiciju struct sockaddr_in
 #include <arpa/inet.h>  //sadrzi inet_ntoa()
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -12,17 +11,11 @@
 #include <syslog.h>
 #include <signal.h>
 #include <limits.h>
-//#include <pthread.h>
 #include "./libs/cJSON/cJSON.h"
-//#include "sensors.h"
 #include "data_layer.h"
 #include "queue.h"
 
-//#define MY_PORT 8001
-//#define INPUT_BUF_SIZE 10000
-//#define GC_LIMIT 20                     //maksimalan broj child processa koji nisu pocisceni
-//#define UNRES_CONN_QUEUE_LEN 5000       //maksimalna duzina reda neresenih konekcija. argument za sistemski poziv listen()
-//#define LOG_NAME "service.log"
+
 #define SERVICE_CONF_FNAME "service.conf"
 #define SENSORS_CONF_FNAME "sensors.conf"
 
@@ -62,11 +55,8 @@ int sock = -1;
 int anomaly_sock = -1;
 struct sockaddr_in anomaly_broadcast;
 int anomaly_sin_size;
-//table ids
+
 pthread_mutex_t db_insert_mutex;
-//my_ulonglong next_users_id = 1;
-//my_ulonglong next_senses_id = 1;
-//
 
 int main(int argc, char **argv)
 {
@@ -295,21 +285,14 @@ void do_work(void *job_buffer_ptr)
         sem_wait(&my_jobs->occupied);
         sem_wait(&my_jobs->access);
 
-        //do your shit
         sensor_job *job = &my_jobs->jobs[my_jobs->next_out];
-        //printf("Consumer:  ");
-        //citaj job->actual_job
-        //enqueue if subscribe and return id
-        //else insert into db and refresh timestamp
-        //printf("%s\n", job->actual_job);
-        //
+
         sscanf(job->actual_job, "%s", local_buff);
 
         if(!strcasecmp(local_buff, "subscribe"))
         {
             sscanf(job->actual_job, "%s %u", local_buff, &old_id);
 
-            //TODO: IF old+id == -1 assign new id, else check if old one exists in db and use it
             //subscribe
             if(old_id == -1)
             {
@@ -320,7 +303,6 @@ void do_work(void *job_buffer_ptr)
             else
             {
                 //check DB if user really exists
-                //if true
                 if(check_user_exists(old_id, inet_ntoa(job->client_info.sin_addr)))
                 {
                     id = old_id;
@@ -330,10 +312,8 @@ void do_work(void *job_buffer_ptr)
                     //TODO: register anomaly, id doesn't exist
                     id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
                     register_user(id, inet_ntoa(job->client_info.sin_addr));
-                    //
                 }
             }
-            //printf("subscribe port=%u, id=%u\n", job->client_info.sin_port, id);
 
             tok = strtok(job->actual_job, "\n");
             tok = strtok(0, "\n");
@@ -377,8 +357,6 @@ void do_work(void *job_buffer_ptr)
                     memcpy(instance->client_info, &job->client_info, sizeof(struct sockaddr_in));
                     instance->type = &sensor_types[k];
 
-                    //printf("create ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
-
                     queue_enqueue(q, instance);
                 }
 
@@ -392,14 +370,12 @@ void do_work(void *job_buffer_ptr)
 
             insert_subscribe(id, subscribe_json);
 
-            //printf("id poslat na port %d\n", job->client_info.sin_port);
             sprintf(send_buff, "%u", id);
             printf("send--->%s\n", send_buff);
             sendto(sock, send_buff, strlen(send_buff) + 1, 0, (struct sockaddr*)&job->client_info, sizeof(struct sockaddr_in));
         }
         else
         {
-            //printf("refresh port=%u\n", job->client_info.sin_port);
             strcpy(local_buff, job->actual_job);
             root = cJSON_Parse(job->actual_job);
 
@@ -441,18 +417,16 @@ void do_work(void *job_buffer_ptr)
                         strcat(description, " z underflow");
 
                     pthread_mutex_unlock(&instance->mutex);
-                    //printf("refresh ts=%ld, %s\n", instance->last_updated_ts, instance->type->name);
-                    //printf("upis u bazu \n");
-                    //insert_sensor_reading(id, inet_ntoa(instance->client_info->sin_addr), type, x, y, z);
-                    //TODO: get id from user table based on client_id
+
                     unsigned int sense_id = insert_sensor_reading(id, local_buff, type, x, y, z);
-                    //TODO: Register anomaly (out of bounds)
+                    //Register anomaly (out of bounds)
                     //in database, syslog, broadcast anomaly
                     if(strlen(description) > 1)
                     {
                         sprintf(anomaly_buffer, "{\"description\":\"%s\",\"lastReading\":%s}", description,
                             local_buff);
                         sendto(anomaly_sock, anomaly_buffer, strlen(anomaly_buffer) + 1, 0, (struct sockaddr*)&anomaly_broadcast, anomaly_sin_size);
+
                         if(sense_id != -1)
                         {
                             insert_anomaly(sense_id, description);
@@ -463,7 +437,7 @@ void do_work(void *job_buffer_ptr)
                 }
                 else
                 {
-                    //TODO: Register anomaly (unregistered)
+                    //Register anomaly (unregistered)
                     //in database, syslog, broadcast anomaly
                     sprintf(anomaly_buffer, "{\"description\":\"Unregistered user is trying to upload sensor reading! Dropping upload data!\",\"lastReading\":%s}",
                             local_buff);
@@ -477,8 +451,6 @@ void do_work(void *job_buffer_ptr)
             {
                 page_offset = cJSON_GetObjectItem(root, "offset")->valueint;
                 page_size = cJSON_GetObjectItem(root, "pageSize")->valueint;
-
-                //printf("%s\n", job->actual_job);
 
                 types_array = cJSON_GetObjectItem(root, "sensorTypes");
 
@@ -500,10 +472,8 @@ void do_work(void *job_buffer_ptr)
 
             cJSON_Delete(root);
         }
-        //
 
         my_jobs->next_out = (my_jobs->next_out + 1) % JOB_BUFFER_SIZE;
-        //
 
         sem_post(&my_jobs->access);
         sem_post(&my_jobs->free);

@@ -40,4 +40,3 @@ CREATE TABLE IF NOT EXISTS gps
 	FOREIGN KEY (senses_id) REFERENCES senses(id) ON DELETE CASCADE
 );
 
-(select u.client_id, 'magnetometer', m.x_value, m.y_value, m.z_value from magnetometer m,senses s, users u where m.senses_id = s.id and s.user_id = u.id);

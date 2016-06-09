@@ -4,11 +4,9 @@ extern char db_host[CONF_LINE_LENGTH/2];
 extern char db_name[CONF_LINE_LENGTH/2];
 extern char db_user[CONF_LINE_LENGTH/2];
 extern char db_pass[CONF_LINE_LENGTH/2];
-//table ids
+
 extern pthread_mutex_t db_insert_mutex;
-//extern my_ulonglong next_users_id = 1;
-//extern my_ulonglong next_senses_id = 1;
-//
+
 sensor_type sensor_types[NUMBER_OF_SENSOR_TYPES];
 extern unsigned short int db_port;
 
