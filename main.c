@@ -259,19 +259,21 @@ void do_work(void *job_buffer_ptr)
     char local_buff[COMMUNICATION_BUFFER_SIZE] = {0};
     char send_buff[COMMUNICATION_BUFFER_SIZE] = {0};
     char *requested_types[NUMBER_OF_SENSOR_TYPES] = {0};
-    char *request_type;
+    char *request_type, subscribeAnomaly = 0;
     char *output_buffer = 0;
     char anomaly_buffer[2 * COMMUNICATION_BUFFER_SIZE] = {0};
     char description[COMMUNICATION_BUFFER_SIZE] = {0};
     char subscribe_json[COMMUNICATION_BUFFER_SIZE] = {0};
     char subscribed_types[COMMUNICATION_BUFFER_SIZE] = {0};
+    char broadcast_buff[COMMUNICATION_BUFFER_SIZE * 2];
     int page_offset = 0, page_size = 0;
+    char *anomaly_buff;
     int i;
+    unsigned int sense_id = 0;
     unsigned int id, old_id = -1;
     char *type, *tok;
     double x, y, z;
     sensor_instance *instance = 0;
-    //time_t ts;
 
     int k = -1;
 
@@ -310,6 +312,7 @@ void do_work(void *job_buffer_ptr)
                 else
                 {
                     //TODO: register anomaly, id doesn't exist
+                    subscribeAnomaly = 1;
                     id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
                     register_user(id, inet_ntoa(job->client_info.sin_addr));
                 }
@@ -346,14 +349,14 @@ void do_work(void *job_buffer_ptr)
                 if(k >= 0)
                 {
                     instance = (sensor_instance*) malloc(sizeof(sensor_instance));
-                    //to do: check if malloc failed
+                    //todo: check if malloc failed
                     instance->last_updated_ts = getMilisecondsFromTS();
                     instance->pinged = 0;
                     instance->next = 0;
                     pthread_mutex_init(&instance->mutex, 0);
                     instance->id = id;
                     instance->client_info = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
-                    //to do: check if malloc failed
+                    //todo: check if malloc failed
                     memcpy(instance->client_info, &job->client_info, sizeof(struct sockaddr_in));
                     instance->type = &sensor_types[k];
 
@@ -370,8 +373,24 @@ void do_work(void *job_buffer_ptr)
 
             insert_subscribe(id, subscribe_json);
 
+            if(subscribeAnomaly)
+            {
+                anomaly_buff = 0;
+
+                sprintf(description, "User trying to subscribe with bad id <%u>.", old_id);
+                anomaly_buff = get_last_reading(id, &sense_id);
+                if(anomaly_buff)
+                {
+                    sprintf(broadcast_buff, "{\"description\":\"%s\",\"lastReading\":%s}", description, anomaly_buff);
+                    insert_anomaly(sense_id, description);
+                    free(anomaly_buff);
+                }
+
+                sendto(anomaly_sock, broadcast_buff, strlen(broadcast_buff) + 1, 0, (struct sockaddr*)&anomaly_broadcast, anomaly_sin_size);
+            }
+
             sprintf(send_buff, "%u", id);
-            printf("send--->%s\n", send_buff);
+            //printf("send--->%s\n", send_buff);
             sendto(sock, send_buff, strlen(send_buff) + 1, 0, (struct sockaddr*)&job->client_info, sizeof(struct sockaddr_in));
         }
         else
