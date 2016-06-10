@@ -72,7 +72,7 @@ void create_tables()
                             ( \
                                 id INTEGER AUTO_INCREMENT, \
                                 senses_id INTEGER, \
-                                description VARCHAR(100), \
+                                description VARCHAR(1000), \
                                 PRIMARY KEY (id), \
                                 FOREIGN KEY (senses_id) REFERENCES senses(id) ON DELETE CASCADE \
                             )");

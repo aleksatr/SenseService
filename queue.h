@@ -88,7 +88,7 @@ sensor_instance* queue_getWithPosition(struct queue_si* q, sensor_instance* si)
     return ret;
 }
 
-sensor_instance* queue_getWithId(struct queue_si *q, long int id)
+sensor_instance* queue_getWithId(struct queue_si *q, unsigned int id)
 {
     sensor_instance *si;
     pthread_mutex_lock(&q->mutex);
@@ -97,7 +97,7 @@ sensor_instance* queue_getWithId(struct queue_si *q, long int id)
     return si;
 }
 
-sensor_instance* queue_getWithIdType(struct queue_si *q, long int id, const char *type)
+sensor_instance* queue_getWithIdType(struct queue_si *q, unsigned int id, const char *type)
 {
     sensor_instance *si;
     pthread_mutex_lock(&q->mutex);
@@ -110,7 +110,7 @@ sensor_instance* queue_getWithIdType(struct queue_si *q, long int id, const char
     return si;
 }
 
-sensor_instance* queue_removeWithIdType(struct queue_si *q, long int id, const char* type)
+sensor_instance* queue_removeWithIdType(struct queue_si *q, unsigned int id, const char* type)
 {
     sensor_instance *si, *tmp;
     pthread_mutex_lock(&q->mutex);

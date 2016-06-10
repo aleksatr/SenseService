@@ -23,7 +23,7 @@ typedef struct
 
 typedef struct sensor_instance
 {
-    long int id;
+    unsigned int id;
     sensor_type *type;
     struct sockaddr_in *client_info;//ip adresa klijenta, tako nesto?!? struct sockaddr_in *client_info?
     long int last_updated_ts; //unix timestamp in miliseconds gettimeofday() system call
