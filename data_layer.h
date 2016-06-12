@@ -13,7 +13,7 @@ unsigned int insert_sensor_reading(unsigned int user_id, char *json, char *senso
 void create_tables();
 
 void register_user(unsigned int id, char* client_address);
-int check_user_exists(int id, char* client_address);
+int check_user_exists(unsigned int id, char* client_address);
 
 char* get_sensor_readings(int page_offset, int page_size, char **requested_types);
 void insert_anomaly(unsigned int sense_id, char* description);

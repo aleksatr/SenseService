@@ -366,12 +366,13 @@ void do_work(void *job_buffer_ptr)
                     queue_enqueue(q, instance);
                 }
 
-                if(do_register)
-                    register_user(id, inet_ntoa(job->client_info.sin_addr));
-
                 k = -1;
                 tok = strtok(0, "\n");
             }
+
+            if(do_register)
+                    register_user(id, inet_ntoa(job->client_info.sin_addr));
+
             subscribed_types[strlen(subscribed_types) - 1] = '\0';
             sprintf(subscribe_json, "{\"type\":\"subscribe\", \"id\":%u, \"sensors\":[%s]}", old_id, subscribed_types);
 

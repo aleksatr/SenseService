@@ -245,7 +245,7 @@ char* get_sensor_readings(int page_offset, int page_size, char **requested_types
     return output_buff;
 }
 
-int check_user_exists(int id, char* client_address)
+int check_user_exists(unsigned int id, char* client_address)
 {
     int num_fields, idFromDb = -2;
     MYSQL_RES *result;
@@ -270,7 +270,7 @@ int check_user_exists(int id, char* client_address)
         return 0;
     }
 
-    sprintf(query_string, "%s %d", "SELECT id, client_address FROM users where client_id = ", id);
+    sprintf(query_string, "SELECT id, client_address FROM users where client_id = %u", id);
     //build query string
 
     if (mysql_query(con, query_string))
