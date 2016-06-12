@@ -36,16 +36,10 @@ void sensor_instance_destroy(sensor_instance *si)
 
 void queue_destroy(struct queue_si *q)
 {
-    int id = -1;
     sensor_instance *si = q->head, *s = 0;
     while(si)
     {
         s = si->next;
-
-        /*if(si->next)
-            id = si->next->id;
-        else
-            id = -1;*/
 
         sensor_instance_destroy(si);
 

@@ -268,6 +268,7 @@ void do_work(void *job_buffer_ptr)
     char broadcast_buff[COMMUNICATION_BUFFER_SIZE * 2];
     int page_offset = 0, page_size = 0;
     char *anomaly_buff;
+    char do_register = 0;
     int i;
     unsigned int sense_id = 0;
     unsigned int id, old_id = -1;
@@ -295,12 +296,14 @@ void do_work(void *job_buffer_ptr)
         {
             sscanf(job->actual_job, "%s %u", local_buff, &old_id);
 
+            do_register = 0;
+
             //subscribe
             if(old_id == -1)
             {
                 //create new user in DB
                 id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
-                register_user(id, inet_ntoa(job->client_info.sin_addr));
+                do_register = 1;
             }
             else
             {
@@ -314,7 +317,7 @@ void do_work(void *job_buffer_ptr)
                     //TODO: register anomaly, id doesn't exist
                     subscribeAnomaly = 1;
                     id = ((unsigned int) time(NULL) << 8) + ((unsigned int) rand() % 256);
-                    register_user(id, inet_ntoa(job->client_info.sin_addr));
+                    do_register = 1;
                 }
             }
 
@@ -363,7 +366,8 @@ void do_work(void *job_buffer_ptr)
                     queue_enqueue(q, instance);
                 }
 
-
+                if(do_register)
+                    register_user(id, inet_ntoa(job->client_info.sin_addr));
 
                 k = -1;
                 tok = strtok(0, "\n");
@@ -715,10 +719,10 @@ void checkingForKeepAliveTimeInterval()
             pthread_mutex_lock(&si->mutex);
             if(timeStamp - si->last_updated_ts > (si->type->keep_alive * 1000 * timeout_factor))
             {
+                temp = si->next; //????
                 queue_removeWithId(q, si);
-                temp = si->next;
 
-                printf("remove %ld \n", si->id);
+                printf("remove %u \n", si->id);
                 //TODO: Register anomaly (not responding)
                 //in database, syslog, broadcast anomaly
                 anomaly_buff = get_last_reading_for_sensor_name(si->id, &sense_id, si->type->name);

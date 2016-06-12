@@ -149,7 +149,7 @@ unsigned int insert_sensor_reading(unsigned int user_id, char *json, char *senso
     curr_senses_id = mysql_insert_id(con);
     pthread_mutex_unlock(&db_insert_mutex);
 
-    sprintf(query_string, "INSERT INTO %s(senses_id, x_value, y_value, z_value) VALUES (%ld, %f, %f, %f)",
+    sprintf(query_string, "INSERT INTO %s(senses_id, x_value, y_value, z_value) VALUES (%u, %f, %f, %f)",
                 sensor_type, curr_senses_id, x, y, z);
 
     if (mysql_query(con, query_string))
@@ -318,9 +318,8 @@ int check_user_exists(int id, char* client_address)
     return idFromDb != -2;
 }
 
-void register_user(int id, char* client_address)
+void register_user(unsigned int id, char* client_address)
 {
-    int i;
     char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
     MYSQL *con = mysql_init(0);
 
@@ -340,7 +339,7 @@ void register_user(int id, char* client_address)
         return;
     }
 
-    sprintf(query_string, "INSERT INTO users(client_id, client_address, created_ts) VALUES (%ld, '%s', NULL)",
+    sprintf(query_string, "INSERT INTO users(client_id, client_address, created_ts) VALUES (%u, '%s', NULL)",
                 id, client_address);
 
     if (mysql_query(con, query_string))
@@ -377,7 +376,7 @@ void insert_anomaly(unsigned int sense_id, char* description)
     if (!sense_id)
         sprintf(query_string, "INSERT INTO anomaly(senses_id, description) VALUES (NULL, '%s')", description);
     else
-        sprintf(query_string, "INSERT INTO anomaly(senses_id, description) VALUES (%ld, '%s')", sense_id, description);
+        sprintf(query_string, "INSERT INTO anomaly(senses_id, description) VALUES (%u, '%s')", sense_id, description);
 
     if (mysql_query(con, query_string))
     {
@@ -413,7 +412,7 @@ void insert_subscribe(unsigned int sense_id, char* json)
     if (sense_id < 1)
         sprintf(query_string, "INSERT INTO senses(user_id, json) VALUES (NULL, '%s')", json);
     else
-        sprintf(query_string, "INSERT INTO senses(user_id, json) VALUES (%ld, '%s')", sense_id, json);
+        sprintf(query_string, "INSERT INTO senses(user_id, json) VALUES (%u, '%s')", sense_id, json);
 
     if (mysql_query(con, query_string))
     {
@@ -435,7 +434,6 @@ char* get_last_reading(unsigned int user_id, unsigned int *sense_id)
     MYSQL_ROW row;
     MYSQL *con = mysql_init(0);
     char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
-    char temp_buff[COMMUNICATION_BUFFER_SIZE] = {0};
     char *output_buff = (char*) malloc(COMMUNICATION_BUFFER_SIZE);
 
     output_buff[0] = '\0';
@@ -478,8 +476,6 @@ char* get_last_reading(unsigned int user_id, unsigned int *sense_id)
 
     while ((row = mysql_fetch_row(result)))
     {
-       // sprintf(temp_buff, "%s{\"id\":%s, \"sensor\":\"%s\", \"x\":%s, \"y\":%s, \"z\":%s, \"timestamp\":\"%s\"}",
-        //        (j++ ? ", " : ""), row[0], row[1], row[2], row[3], row[4], row[5]);
         sscanf(row[0], "%u", &idFromDb);
         strcpy(output_buff, row[1]);
     }
@@ -498,7 +494,6 @@ char* get_last_reading_for_sensor_name(unsigned int user_id, unsigned int *sense
     MYSQL_ROW row;
     MYSQL *con = mysql_init(0);
     char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
-    char temp_buff[COMMUNICATION_BUFFER_SIZE] = {0};
     char *output_buff = (char*) malloc(COMMUNICATION_BUFFER_SIZE);
 
     output_buff[0] = '\0';
@@ -541,8 +536,6 @@ char* get_last_reading_for_sensor_name(unsigned int user_id, unsigned int *sense
 
     while ((row = mysql_fetch_row(result)))
     {
-       // sprintf(temp_buff, "%s{\"id\":%s, \"sensor\":\"%s\", \"x\":%s, \"y\":%s, \"z\":%s, \"timestamp\":\"%s\"}",
-        //        (j++ ? ", " : ""), row[0], row[1], row[2], row[3], row[4], row[5]);
         sscanf(row[0], "%u", sense_id);
         strcpy(output_buff, row[1]);
     }
