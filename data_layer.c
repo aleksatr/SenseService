@@ -36,7 +36,7 @@ void create_tables()
     sprintf(query_string,  "CREATE TABLE IF NOT EXISTS users \
                             ( \
                                 id INTEGER AUTO_INCREMENT, \
-                                client_id INTEGER UNIQUE, \
+                                client_id BIGINT UNIQUE, \
                                 client_address VARCHAR(100), \
                                 created_ts TIMESTAMP, \
                                 PRIMARY KEY (id) \
@@ -53,7 +53,7 @@ void create_tables()
     sprintf(query_string,  "CREATE TABLE IF NOT EXISTS senses \
                             ( \
                                 id INTEGER AUTO_INCREMENT, \
-                                user_id INTEGER, \
+                                user_id BIGINT, \
                                 json VARCHAR(1024), \
                                 ts TIMESTAMP, \
                                 PRIMARY KEY (id), \
@@ -247,7 +247,7 @@ char* get_sensor_readings(int page_offset, int page_size, char **requested_types
 
 int check_user_exists(unsigned int id, char* client_address)
 {
-    int num_fields, idFromDb = -2;
+    unsigned int num_fields, idFromDb = -2;
     MYSQL_RES *result;
     MYSQL_ROW row;
     MYSQL *con = mysql_init(0);
@@ -270,7 +270,7 @@ int check_user_exists(unsigned int id, char* client_address)
         return 0;
     }
 
-    sprintf(query_string, "SELECT id, client_address FROM users where client_id = %u", id);
+    sprintf(query_string, "SELECT client_id, client_address FROM users where client_id = %u", id);
     //build query string
 
     if (mysql_query(con, query_string))
@@ -293,14 +293,12 @@ int check_user_exists(unsigned int id, char* client_address)
 
     while ((row = mysql_fetch_row(result)))
     {
-       // sprintf(temp_buff, "%s{\"id\":%s, \"sensor\":\"%s\", \"x\":%s, \"y\":%s, \"z\":%s, \"timestamp\":\"%s\"}",
-        //        (j++ ? ", " : ""), row[0], row[1], row[2], row[3], row[4], row[5]);
-        sscanf(row[0], "%d", &idFromDb);
+        sscanf(row[0], "%u", &idFromDb);
         strcpy(temp_buff, row[1]);
 
         if (strcmp(client_address, temp_buff))
         {
-            sprintf(query_string, "UPDATE users set client_address = \'%s\' WHERE id = %d", client_address, idFromDb);
+            sprintf(query_string, "UPDATE users set client_address = \'%s\' WHERE id = %u", client_address, idFromDb);
 
             if (mysql_query(con, query_string))
             {

@@ -273,7 +273,7 @@ void do_work(void *job_buffer_ptr)
     unsigned int sense_id = 0;
     unsigned int id, old_id = -1;
     char *type, *tok;
-    double x, y, z;
+    double x, y, z, container_id;
     sensor_instance *instance = 0;
 
     int k = -1;
@@ -401,6 +401,7 @@ void do_work(void *job_buffer_ptr)
         else
         {
             strcpy(local_buff, job->actual_job);
+
             root = cJSON_Parse(job->actual_job);
 
             request_type = cJSON_GetObjectItem(root, "type")->valuestring;
@@ -408,11 +409,12 @@ void do_work(void *job_buffer_ptr)
             if(!strcasecmp(request_type, "upload"))
             {
                 type = cJSON_GetObjectItem(root, "sensor")->valuestring;
-                id = cJSON_GetObjectItem(root, "id")->valueint;
+                container_id = cJSON_GetObjectItem(root, "id")->valuedouble;
                 x = cJSON_GetObjectItem(root, "x")->valuedouble;
                 y = cJSON_GetObjectItem(root, "y")->valuedouble;
                 z = cJSON_GetObjectItem(root, "z")->valuedouble;
 
+                id = (unsigned int)container_id;
 
                 instance = queue_getWithIdType(q, id, type);
 

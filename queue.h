@@ -41,9 +41,10 @@ void queue_destroy(struct queue_si *q)
     {
         s = si->next;
 
+        queue_removeWithId(q, si);
         sensor_instance_destroy(si);
 
-        si = queue_removeWithId(q, s);
+        si = s;
     }
     pthread_mutex_destroy(&q->mutex);
 }
@@ -94,10 +95,14 @@ sensor_instance* queue_getWithId(struct queue_si *q, unsigned int id)
 sensor_instance* queue_getWithIdType(struct queue_si *q, unsigned int id, const char *type)
 {
     sensor_instance *si;
+
     pthread_mutex_lock(&q->mutex);
     for(si = q->head; si != 0 ; si = si->next)
+    {
         if(si->id == id && !strcasecmp(type, si->type->name))
             break;
+    }
+
 
     /*si != 0 && (si->id != id || strcasecmp(type, si->type->name))*/
     pthread_mutex_unlock(&q->mutex);
