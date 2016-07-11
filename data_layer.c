@@ -113,7 +113,7 @@ void create_tables()
 
 unsigned int insert_sensor_reading(unsigned int user_id, char *json, char *sensor_type, double x, double y, double z)
 {
-    my_ulonglong curr_senses_id = 1;
+    unsigned int curr_senses_id = 1;
     char query_string[COMMUNICATION_BUFFER_SIZE] = {0};
     MYSQL *con = mysql_init(0);
 
